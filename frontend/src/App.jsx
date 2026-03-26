@@ -60,6 +60,8 @@ function App() {
   const scanInputRef = useRef(null);
   const audioContextRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
+  const themeTransitionTimeoutRef = useRef(null);
+  const themeCommitTimeoutRef = useRef(null);
 
   useEffect(() => {
     refreshAll();
