@@ -7,6 +7,7 @@ from .models import (
     CashSession,
     CashSessionClose,
     CashSessionOpen,
+    Category,
     DailyCashSummary,
     InventoryMovement,
     ReportSummary,
@@ -39,6 +40,15 @@ class SQLiteStockRepository:
                     min_quantity INTEGER NOT NULL DEFAULT 0,
                     sale_price REAL NOT NULL DEFAULT 0,
                     cost_price REAL NOT NULL DEFAULT 0
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
@@ -89,6 +99,55 @@ class SQLiteStockRepository:
 
         self._ensure_legacy_columns()
         self._seed_if_empty()
+
+    def list_categories(self) -> list[Category]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, created_at
+                FROM categories
+                ORDER BY LOWER(name)
+                """
+            ).fetchall()
+        return [Category(id=row["id"], name=row["name"], created_at=row["created_at"]) for row in rows]
+
+    def create_category(self, name: str) -> Category:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("La categoria no puede estar vacia.")
+
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT id, name, created_at FROM categories WHERE LOWER(name) = LOWER(?)",
+                (normalized_name,),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError("La categoria ya existe.")
+
+            cursor = connection.execute(
+                "INSERT INTO categories (name) VALUES (?)",
+                (normalized_name,),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT id, name, created_at FROM categories WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+
+        return Category(id=row["id"], name=row["name"], created_at=row["created_at"])
+
+    def ensure_category(self, name: str) -> None:
+        normalized_name = name.strip()
+        if not normalized_name:
+            return
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT id FROM categories WHERE LOWER(name) = LOWER(?)",
+                (normalized_name,),
+            ).fetchone()
+            if existing is None:
+                connection.execute("INSERT INTO categories (name) VALUES (?)", (normalized_name,))
+                connection.commit()
 
     def list_items(self) -> list[StockItem]:
         with self._connect() as connection:
@@ -151,6 +210,7 @@ class SQLiteStockRepository:
         return [self._to_movement(row) for row in rows]
 
     def create_item(self, payload: StockItemCreate) -> StockItem:
+        self.ensure_category(payload.category)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -190,6 +250,7 @@ class SQLiteStockRepository:
         if current is None:
             return None
 
+        self.ensure_category(payload.category)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -518,20 +579,26 @@ class SQLiteStockRepository:
 
     def _seed_if_empty(self) -> None:
         with self._connect() as connection:
+            category_count = connection.execute("SELECT COUNT(*) AS total FROM categories").fetchone()
+            if category_count["total"] == 0:
+                connection.executemany(
+                    "INSERT INTO categories (name) VALUES (?)",
+                    [("General",), ("Almacen",), ("Snacks",), ("Limpieza",)],
+                )
+
             row = connection.execute("SELECT COUNT(*) AS total FROM items").fetchone()
-            if row["total"] > 0:
-                return
-            connection.executemany(
-                """
-                INSERT INTO items (code, name, category, quantity, min_quantity, sale_price, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    ("7791234567890", "Yerba Tradicional 1kg", "Almacen", 12, 5, 4890, 3200),
-                    ("7501000123456", "Galletitas de avena", "Snacks", 24, 6, 2150, 1200),
-                    ("0001122233334", "Detergente citrico", "Limpieza", 18, 8, 3400, 2100),
-                ],
-            )
+            if row["total"] == 0:
+                connection.executemany(
+                    """
+                    INSERT INTO items (code, name, category, quantity, min_quantity, sale_price, cost_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        ("7791234567890", "Yerba Tradicional 1kg", "Almacen", 12, 5, 4890, 3200),
+                        ("7501000123456", "Galletitas de avena", "Snacks", 24, 6, 2150, 1200),
+                        ("0001122233334", "Detergente citrico", "Limpieza", 18, 8, 3400, 2100),
+                    ],
+                )
             connection.commit()
 
     def _ensure_legacy_columns(self) -> None:
@@ -548,6 +615,14 @@ class SQLiteStockRepository:
                     SET sale_price = CASE WHEN sale_price = 0 THEN price ELSE sale_price END
                     """
                 )
+            categories = connection.execute("SELECT DISTINCT category FROM items WHERE TRIM(category) <> ''").fetchall()
+            for category in categories:
+                exists = connection.execute(
+                    "SELECT id FROM categories WHERE LOWER(name) = LOWER(?)",
+                    (category["category"],),
+                ).fetchone()
+                if exists is None:
+                    connection.execute("INSERT INTO categories (name) VALUES (?)", (category["category"],))
             connection.commit()
 
     def _record_movement(

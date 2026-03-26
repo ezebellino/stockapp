@@ -3,6 +3,8 @@ from sqlite3 import IntegrityError
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ..models import (
+    Category,
+    CategoryCreate,
     InventoryMovement,
     SaleCreate,
     SaleRecord,
@@ -15,6 +17,19 @@ from ..repository import repository
 
 
 router = APIRouter(tags=["items"])
+
+
+@router.get("/categories", response_model=list[Category])
+def list_categories() -> list[Category]:
+    return repository.list_categories()
+
+
+@router.post("/categories", response_model=Category, status_code=status.HTTP_201_CREATED)
+def create_category(payload: CategoryCreate) -> Category:
+    try:
+        return repository.create_category(payload.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/items", response_model=list[StockItem])

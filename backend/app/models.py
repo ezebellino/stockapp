@@ -58,6 +58,16 @@ class InventoryMovement(BaseModel):
     created_at: str
 
 
+class Category(BaseModel):
+    id: int
+    name: str
+    created_at: str
+
+
+class CategoryCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=80)
+
+
 class CashSessionOpen(BaseModel):
     opening_amount: float = Field(..., ge=0)
     notes: str = Field(default="", max_length=240)
