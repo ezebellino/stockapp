@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -159,3 +159,4 @@ button, input, select { font: inherit; }
 .range-chip-group { align-items: center; }
 .range-chip-group .section-button { letter-spacing: 0.02em; }
 @media (max-width: 767px) { .range-chip-group { width: 100%; } .range-chip-group .section-button { flex: 1 1 auto; text-align: center; } }
+
