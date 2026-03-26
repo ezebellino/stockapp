@@ -8,7 +8,8 @@ const emptySaleForm = { code: "", amount: 1, unit_price: "" };
 const emptyCashOpenForm = { opening_amount: "", notes: "" };
 const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
 const emptyTreasuryFilter = { startDate: "", endDate: "" };
-const emptyAccessSetup = { businessName: "", userName: "", password: "", confirmPassword: "" };
+const emptyBusinessProfile = { businessName: "", businessAddress: "", businessWhatsapp: "", businessTaxId: "", businessLogoDataUrl: "" };
+const emptyAccessSetup = { ...emptyBusinessProfile, userName: "", password: "", confirmPassword: "" };
 const emptyLoginForm = { userName: "", password: "" };
 const availableThemes = {
   dark: { label: "Oscuro", modeLabel: "Operacion nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
@@ -56,6 +57,7 @@ function App() {
   const [accessConfig, setAccessConfig] = useState(null);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [accessSetupForm, setAccessSetupForm] = useState(emptyAccessSetup);
+  const [businessProfileForm, setBusinessProfileForm] = useState(emptyBusinessProfile);
   const [loginForm, setLoginForm] = useState(emptyLoginForm);
   const scanInputRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -70,6 +72,7 @@ function App() {
     const savedAccess = readLocalJson(accessStorageKey);
     if (savedAccess?.password && savedAccess?.userName) {
       setAccessConfig(savedAccess);
+      setBusinessProfileForm(buildBusinessProfileForm(savedAccess));
       setLoginForm((current) => ({ ...current, userName: savedAccess.userName }));
     }
     if (window.localStorage.getItem(sessionStorageKey) === "open") setSessionOpen(true);
@@ -197,23 +200,79 @@ function App() {
 
   function handleAccessSetup(event) {
     event.preventDefault();
-    const payload = { businessName: accessSetupForm.businessName.trim(), userName: accessSetupForm.userName.trim(), password: accessSetupForm.password };
+    const payload = {
+      businessName: accessSetupForm.businessName.trim(),
+      businessAddress: accessSetupForm.businessAddress.trim(),
+      businessWhatsapp: accessSetupForm.businessWhatsapp.trim(),
+      businessTaxId: accessSetupForm.businessTaxId.trim(),
+      businessLogoDataUrl: accessSetupForm.businessLogoDataUrl || "",
+      userName: accessSetupForm.userName.trim(),
+      password: accessSetupForm.password,
+    };
     if (!payload.businessName || !payload.userName || payload.password.length < 4) {
-      setError("Completá el nombre del local, el usuario y una clave de al menos 4 caracteres.");
+      setError("Completa el nombre del local, el usuario y una clave de al menos 4 caracteres.");
       return;
     }
     if (accessSetupForm.password !== accessSetupForm.confirmPassword) {
-      setError("La confirmación de la clave no coincide.");
+      setError("La confirmacion de la clave no coincide.");
       return;
     }
     window.localStorage.setItem(accessStorageKey, JSON.stringify(payload));
     window.localStorage.setItem(sessionStorageKey, "open");
     setAccessConfig(payload);
+    setBusinessProfileForm(buildBusinessProfileForm(payload));
     setLoginForm({ userName: payload.userName, password: "" });
     setAccessSetupForm(emptyAccessSetup);
     setSessionOpen(true);
     setError("");
-    setMessage(`Bienvenido a ${payload.businessName}. El acceso local quedó configurado.`);
+    setMessage(`Bienvenido a ${payload.businessName}. El acceso local quedo configurado.`);
+  }
+
+  function handleBusinessProfileSave(event) {
+    event.preventDefault();
+    if (!accessConfig) return;
+    const payload = {
+      ...accessConfig,
+      businessName: businessProfileForm.businessName.trim(),
+      businessAddress: businessProfileForm.businessAddress.trim(),
+      businessWhatsapp: businessProfileForm.businessWhatsapp.trim(),
+      businessTaxId: businessProfileForm.businessTaxId.trim(),
+      businessLogoDataUrl: businessProfileForm.businessLogoDataUrl || "",
+    };
+    if (!payload.businessName) {
+      setError("Completa al menos el nombre comercial para imprimir tickets presentables.");
+      return;
+    }
+    window.localStorage.setItem(accessStorageKey, JSON.stringify(payload));
+    setAccessConfig(payload);
+    setBusinessProfileForm(buildBusinessProfileForm(payload));
+    setError("");
+    setMessage(`Perfil comercial actualizado para ${payload.businessName}.`);
+  }
+
+  function handleLogoUpload(event, setter) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Selecciona una imagen valida para el logo.");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setError("El logo debe pesar menos de 1 MB para guardarlo localmente.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setter((current) => ({ ...current, businessLogoDataUrl: typeof reader.result === "string" ? reader.result : "" }));
+      setError("");
+    };
+    reader.onerror = () => setError("No se pudo leer el archivo del logo.");
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  function clearLogo(setter) {
+    setter((current) => ({ ...current, businessLogoDataUrl: "" }));
   }
 
   function handleLogin(event) {
@@ -290,10 +349,14 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo registrar la venta.");
       setSaleForm(emptySaleForm);
-      setMessage(`Venta registrada para ${data.item_name}.`);
+      setMessage(`Venta registrada para ${data.item_name}. Preparando ticket de impresion.`);
       setScanState("success");
       playTone("success");
       await refreshAll();
+      const printStarted = printSaleTicket(data, { business: accessConfig, cashierName: accessConfig?.userName || "Mostrador" });
+      if (!printStarted) {
+        setMessage(`Venta registrada para ${data.item_name}. Habilita las ventanas emergentes para imprimir el ticket.`);
+      }
       focusScanner();
     } catch (err) {
       setError(err.message);
@@ -474,7 +537,92 @@ function App() {
     printWindow.print();
   }
 
-  async function applyTreasuryFilter(event) {
+
+  function printSaleTicket(sale, options) {
+    const printWindow = window.open("", "_blank", "width=420,height=760");
+    if (!printWindow) return false;
+
+    const branchLabel = escapeHtml(options?.branchName || "Comercio");
+    const cashierLabel = escapeHtml(options?.cashierName || "Mostrador");
+    const saleNumber = `V-${String(sale.id).padStart(6, "0")}`;
+    const saleDateTime = formatDateTime(sale.created_at);
+    const subtotal = Number(sale.quantity) * Number(sale.unit_price);
+    const html = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Ticket ${saleNumber}</title>
+<style>
+  @page { size: auto; margin: 10mm; }
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f5f1ea; color: #1f2937; font-family: "Segoe UI", Arial, sans-serif; }
+  .sheet { width: min(100%, 78mm); margin: 0 auto; background: #fffdf9; border: 1px solid #e7ded1; border-radius: 24px; padding: 20px 18px; }
+  .top { text-align: center; padding-bottom: 14px; border-bottom: 1px dashed #cfbfab; }
+  .eyebrow { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: #8b6f56; }
+  h1 { margin: 8px 0 0; font-size: 24px; line-height: 1.1; }
+  .meta, .foot { color: #6b7280; font-size: 11px; }
+  .badge { display: inline-block; margin-top: 10px; padding: 6px 10px; border-radius: 999px; background: #0f4c63; color: #f8fafc; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .section { margin-top: 16px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
+  .label { color: #6b7280; }
+  .value { font-weight: 600; text-align: right; }
+  .product { margin-top: 16px; border: 1px solid #eadfce; border-radius: 18px; background: linear-gradient(180deg, #fffdf8, #f7efe4); padding: 14px; }
+  .product-name { font-size: 18px; font-weight: 700; line-height: 1.2; }
+  .product-meta { margin-top: 6px; color: #7c6a58; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .totals { margin-top: 16px; padding-top: 12px; border-top: 1px dashed #cfbfab; }
+  .total-strong { font-size: 18px; font-weight: 700; }
+  .thankyou { margin-top: 16px; text-align: center; padding-top: 12px; border-top: 1px dashed #cfbfab; }
+</style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="top">
+      <div class="eyebrow">Ticket de venta</div>
+      <h1>${branchLabel}</h1>
+      <div class="badge">Operacion confirmada</div>
+    </header>
+
+    <section class="section">
+      <div class="row"><span class="label">Venta</span><span class="value">${saleNumber}</span></div>
+      <div class="row"><span class="label">Fecha y hora</span><span class="value">${escapeHtml(saleDateTime)}</span></div>
+      <div class="row"><span class="label">Cajero</span><span class="value">${cashierLabel}</span></div>
+      <div class="row"><span class="label">Canal</span><span class="value">Mostrador</span></div>
+    </section>
+
+    <section class="product">
+      <div class="product-name">${escapeHtml(sale.item_name)}</div>
+      <div class="product-meta">${escapeHtml(sale.category)} · COD ${escapeHtml(sale.code)}</div>
+      <div class="section">
+        <div class="row"><span class="label">Cantidad</span><span class="value">${formatInteger(sale.quantity)}</span></div>
+        <div class="row"><span class="label">Precio unitario</span><span class="value">${formatMoney(sale.unit_price)}</span></div>
+        <div class="row"><span class="label">Subtotal</span><span class="value">${formatMoney(subtotal)}</span></div>
+      </div>
+    </section>
+
+    <section class="totals">
+      <div class="row total-strong"><span>Total</span><span>${formatMoney(sale.revenue)}</span></div>
+      <div class="row"><span class="label">Items</span><span class="value">${formatInteger(sale.quantity)}</span></div>
+    </section>
+
+    <footer class="thankyou">
+      <div>Gracias por su compra.</div>
+      <div class="foot">Conserve este comprobante para cambios o consultas.</div>
+    </footer>
+  </main>
+</body>
+</html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    const triggerPrint = () => {
+      printWindow.print();
+      printWindow.onafterprint = () => printWindow.close();
+    };
+    window.setTimeout(triggerPrint, 180);
+    return true;
+  }  async function applyTreasuryFilter(event) {
     event.preventDefault();
     setTreasuryPreset("custom");
     await refreshAll(treasuryFilter);
@@ -563,10 +711,14 @@ function App() {
               <ThemeToggle theme={theme} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
-              <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacén San Martín" />
+              <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacen San Martin" />
+              <InputField label="Direccion comercial" name="businessAddress" value={accessSetupForm.businessAddress} onChange={handleText(setAccessSetupForm)} placeholder="Av. Principal 123, Ciudad" />
+              <InputField label="WhatsApp" name="businessWhatsapp" value={accessSetupForm.businessWhatsapp} onChange={handleText(setAccessSetupForm)} placeholder="+54 9 11 1234 5678" />
+              <InputField label="CUIT" name="businessTaxId" value={accessSetupForm.businessTaxId} onChange={handleText(setAccessSetupForm)} placeholder="30-12345678-9" />
+              <LogoUploadField label="Logo del comercio (opcional)" logoDataUrl={accessSetupForm.businessLogoDataUrl} onSelect={(event) => handleLogoUpload(event, setAccessSetupForm)} onClear={() => clearLogo(setAccessSetupForm)} />
               <InputField label="Usuario local" name="userName" value={accessSetupForm.userName} onChange={handleText(setAccessSetupForm)} placeholder="Administrador" />
-              <InputField label="Clave local" name="password" type="password" value={accessSetupForm.password} onChange={handleText(setAccessSetupForm)} placeholder="Mínimo 4 caracteres" />
-              <InputField label="Confirmar clave" name="confirmPassword" type="password" value={accessSetupForm.confirmPassword} onChange={handleText(setAccessSetupForm)} placeholder="Repetí la clave" />
+              <InputField label="Clave local" name="password" type="password" value={accessSetupForm.password} onChange={handleText(setAccessSetupForm)} placeholder="Minimo 4 caracteres" />
+              <InputField label="Confirmar clave" name="confirmPassword" type="password" value={accessSetupForm.confirmPassword} onChange={handleText(setAccessSetupForm)} placeholder="Repeti la clave" />
               <button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Ingresar al sistema</button>
             </form>
             <StatusPanel message={message} error={error} />
@@ -668,7 +820,7 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length }) : null}
+            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length, businessProfileForm, setBusinessProfileForm, handleBusinessProfileSave, handleLogoUpload, clearLogo, saving }) : null}
             {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection }) : null}
             {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, treasuryPreset, treasuryMetric, setTreasuryMetric, applyTreasuryPreset, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales }) : null}
           </section>
@@ -678,7 +830,7 @@ function App() {
   );
 }
 
-function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories, totalItems }) {
+function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories, totalItems, businessProfileForm, setBusinessProfileForm, handleBusinessProfileSave, handleLogoUpload, clearLogo, saving }) {
   const topProduct = reports.top_products[0];
   const needsOnboarding = totalCategories === 0 || totalItems === 0;
   return (
@@ -720,6 +872,19 @@ function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lo
           </div>
         </Panel>
       </section>
+
+      <Panel title="Perfil comercial" description="Estos datos alimentan el ticket termico y dejan la aplicacion lista para cualquier comercio.">
+        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleBusinessProfileSave}>
+          <InputField label="Nombre del local" name="businessName" value={businessProfileForm.businessName} onChange={handleText(setBusinessProfileForm)} />
+          <InputField label="Direccion comercial" name="businessAddress" value={businessProfileForm.businessAddress} onChange={handleText(setBusinessProfileForm)} />
+          <InputField label="WhatsApp" name="businessWhatsapp" value={businessProfileForm.businessWhatsapp} onChange={handleText(setBusinessProfileForm)} />
+          <InputField label="CUIT" name="businessTaxId" value={businessProfileForm.businessTaxId} onChange={handleText(setBusinessProfileForm)} />
+          <div className="md:col-span-2">
+            <LogoUploadField label="Logo del comercio (opcional)" logoDataUrl={businessProfileForm.businessLogoDataUrl} onSelect={(event) => handleLogoUpload(event, setBusinessProfileForm)} onClear={() => clearLogo(setBusinessProfileForm)} />
+          </div>
+          <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">Guardar perfil comercial</button>
+        </form>
+      </Panel>
     </div>
   );
 }
@@ -818,12 +983,19 @@ function normalizeProductForm(form) { return { code: String(form.code).trim(), n
 function formatMoney(value) { return money.format(Number(value || 0)); }
 function formatInteger(value) { return integer.format(Number(value || 0)); }
 function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }
-function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
+function formatDateTime(value) { const parsed = parseAppDateTime(value); return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("es-AR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); }
 function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
 function buildTreasuryPresetFilter(preset) { const today = new Date(); const endDate = toDateInputValue(today); if (preset === "all") return { ...emptyTreasuryFilter }; if (preset === "month") return { startDate: toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), endDate }; const days = preset === "30d" ? 29 : 6; const start = new Date(today); start.setDate(today.getDate() - days); return { startDate: toDateInputValue(start), endDate }; }
 function toDateInputValue(value) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 10); }
 function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
 function readLocalJson(key) { try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+function buildBusinessProfileForm(config) { return { businessName: config?.businessName || "", businessAddress: config?.businessAddress || "", businessWhatsapp: config?.businessWhatsapp || "", businessTaxId: config?.businessTaxId || "", businessLogoDataUrl: config?.businessLogoDataUrl || "" }; }
+function parseAppDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return new Date(NaN);
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return new Date(raw.replace(" ", "T") + "Z");
+  return new Date(raw);
+}
 function buildInitials(value) { return String(value).split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "AL"; }
 function sectionEyebrow(section) { return ({ home: "Visión general", inventory: "Gestión de inventario", treasury: "Finanzas y operaciones" })[section] ?? "Sistema local"; }
 function sectionTitle(section, branchName) { return ({ home: `Bienvenido, ${branchName}`, inventory: "Gestión de inventario", treasury: "Control de caja y reportes" })[section] ?? branchName; }
@@ -842,6 +1014,9 @@ function ThemeToggle({ theme, onChange }) {
       ))}
     </div>
   );
+}
+function LogoUploadField({ label, logoDataUrl, onSelect, onClear }) {
+  return <div><span className="field-label mb-2 block text-sm font-medium">{label}</span><label className="field-input flex cursor-pointer items-center justify-center rounded-2xl border-dashed px-4 py-4 text-center text-sm"><input type="file" accept="image/*" className="hidden" onChange={onSelect} /><span>{logoDataUrl ? "Reemplazar logo" : "Seleccionar imagen"}</span></label>{logoDataUrl ? <div className="soft-card mt-3 flex items-center justify-between gap-4 rounded-2xl p-3"><img src={logoDataUrl} alt="Logo comercio" className="h-14 w-14 rounded-xl object-contain" /><button type="button" onClick={onClear} className="section-button section-button-idle rounded-full px-3 py-2 text-xs font-semibold transition">Quitar logo</button></div> : <div className="panel-description mt-2 text-xs">Opcional. Se guarda localmente y se usa en el ticket.</div>}</div>;
 }
 function SidebarLink({ item, active, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"}`}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span>{item.label}</span></button>; }
 function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
