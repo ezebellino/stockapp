@@ -1,4 +1,4 @@
-﻿import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
@@ -10,7 +10,11 @@ const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
 const emptyTreasuryFilter = { startDate: "", endDate: "" };
 const emptyAccessSetup = { businessName: "", userName: "", password: "", confirmPassword: "" };
 const emptyLoginForm = { userName: "", password: "" };
-const availableThemes = { dark: { label: "Oscuro" }, sepia: { label: "Claro sepia" } };
+const availableThemes = {
+  dark: { label: "Oscuro", modeLabel: "Operacion nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
+  sepia: { label: "Claro sepia", modeLabel: "Operacion calida", summary: "Una variante amable y luminosa para jornadas largas." },
+  enterprise: { label: "Empresarial", modeLabel: "Editorial ejecutivo", summary: "Preset inspirado en Stitch para direccion, metricas y lectura institucional." },
+};
 const navItems = [
   { id: "home", label: "Inicio", short: "IN" },
   { id: "inventory", label: "Inventario", short: "IV" },
@@ -37,6 +41,7 @@ function App() {
   const [treasuryPreset, setTreasuryPreset] = useState("all");
   const [treasuryMetric, setTreasuryMetric] = useState("revenue");
   const [theme, setTheme] = useState("dark");
+  const [themeTransition, setThemeTransition] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [scanCode, setScanCode] = useState("");
   const [scanAmount, setScanAmount] = useState(1);
@@ -126,6 +131,29 @@ function App() {
   const currentNavLabel = navItems.find((item) => item.id === activeSection)?.label ?? "Inicio";
   const branchName = accessConfig?.businessName || "Tu local";
 
+  function handleThemeChange(nextTheme, event) {
+    const target = event?.currentTarget;
+    const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+    const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+    const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
+
+    if (themeTransitionTimeoutRef.current) window.clearTimeout(themeTransitionTimeoutRef.current);
+    if (themeCommitTimeoutRef.current) window.clearTimeout(themeCommitTimeoutRef.current);
+
+    setThemeTransition({ key: Date.now(), x, y });
+
+    if (nextTheme !== theme) {
+      themeCommitTimeoutRef.current = window.setTimeout(() => {
+        setTheme(nextTheme);
+        themeCommitTimeoutRef.current = null;
+      }, 120);
+    }
+
+    themeTransitionTimeoutRef.current = window.setTimeout(() => {
+      setThemeTransition(null);
+      themeTransitionTimeoutRef.current = null;
+    }, 980);
+  }
   async function refreshAll(filters = treasuryFilter) {
     setLoading(true);
     setError("");
@@ -496,9 +524,22 @@ function App() {
     oscillator.stop(startAt + settings.duration);
   }
 
+  const themeShiftOverlay = themeTransition ? (
+    <div
+      key={themeTransition.key}
+      className="theme-shift-overlay"
+      style={{ "--theme-shift-x": `${themeTransition.x}px`, "--theme-shift-y": `${themeTransition.y}px` }}
+      aria-hidden="true"
+    >
+      <div className="theme-shift-glow" />
+      <div className="theme-shift-wave theme-shift-wave-primary" />
+      <div className="theme-shift-wave theme-shift-wave-secondary" />
+    </div>
+  ) : null;
   if (!accessConfig) {
     return (
       <main className="auth-shell min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+        {themeShiftOverlay}
         <div className="auth-grid mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.08fr_0.92fr]">
           <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
             <span className="eyebrow">Sistema local profesional</span>
@@ -517,7 +558,7 @@ function App() {
                 <h2 className="auth-title mt-3 text-3xl font-semibold">Crear acceso local</h2>
                 <p className="auth-text mt-2 text-sm">Este ingreso solo protege la apertura del sistema en esta PC del local.</p>
               </div>
-              <ThemeToggle theme={theme} onChange={setTheme} compact />
+              <ThemeToggle theme={theme} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
               <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacén San Martín" />
@@ -536,6 +577,7 @@ function App() {
   if (!sessionOpen) {
     return (
       <main className="auth-shell min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+        {themeShiftOverlay}
         <div className="auth-grid mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_0.92fr]">
           <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
             <span className="eyebrow">Bienvenido a {branchName}</span>
@@ -555,7 +597,7 @@ function App() {
                 <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
                 <p className="auth-text mt-2 text-sm">Protección local para esta PC. No requiere Internet ni cuentas externas.</p>
               </div>
-              <ThemeToggle theme={theme} onChange={setTheme} compact />
+              <ThemeToggle theme={theme} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleLogin}>
               <InputField label="Usuario" name="userName" value={loginForm.userName} onChange={handleText(setLoginForm)} />
@@ -570,6 +612,7 @@ function App() {
   }
   return (
     <main className="app-shell min-h-screen">
+      {themeShiftOverlay}
       <div className="dashboard-layout grid min-h-screen lg:grid-cols-[290px_minmax(0,1fr)]">
         <aside className="sidebar-shell border-r px-5 py-6 lg:px-6">
           <div>
@@ -610,7 +653,7 @@ function App() {
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
               <div className="flex flex-wrap items-center gap-3">
-                <ThemeToggle theme={theme} onChange={setTheme} />
+                <ThemeToggle theme={theme} onChange={handleThemeChange} />
                 <div className="date-pill rounded-2xl px-4 py-3 text-right">
                   <div className="panel-description text-[11px] uppercase tracking-[0.24em]">Fecha actual</div>
                   <div className="panel-title mt-1 text-sm font-semibold capitalize">{currentDateLabel}</div>
@@ -787,7 +830,17 @@ function handleText(setter) { return (event) => { const { name, value } = event.
 function normalizeText(value) { return String(value || "").normalize("NFD").replace(/[^\S\r\n]+/g, " ").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase(); }
 
 function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[30px] p-5 shadow-panel backdrop-blur"><div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description mt-1 text-sm">{description}</p></div>{action}</div>{children}</article>; }
-function ThemeToggle({ theme, onChange }) { return <div className="theme-toggle inline-flex items-center gap-2 rounded-full px-2 py-2">{Object.entries(availableThemes).map(([value, config]) => <button key={value} type="button" onClick={() => onChange(value)} className={`theme-pill rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${theme === value ? "theme-pill-active" : "theme-pill-idle"}`}>{config.label}</button>)}</div>; }
+function ThemeToggle({ theme, onChange }) {
+  return (
+    <div className="theme-toggle inline-flex items-center gap-2 rounded-full px-2 py-2">
+      {Object.entries(availableThemes).map(([value, config]) => (
+        <button key={value} type="button" onClick={(event) => onChange(value, event)} className={`theme-pill rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${theme === value ? "theme-pill-active" : "theme-pill-idle"}`}>
+          <span className="theme-pill-label">{config.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 function SidebarLink({ item, active, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"}`}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span>{item.label}</span></button>; }
 function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
 function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`status-panel mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "status-panel-error" : "status-panel-success"}`}>{error || message}</div>; }
