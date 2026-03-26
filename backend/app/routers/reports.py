@@ -1,4 +1,7 @@
-from fastapi import APIRouter, HTTPException, Query, status
+import csv
+from io import StringIO
+
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, ReportSummary
 from ..repository import repository
@@ -21,6 +24,68 @@ def get_cash_summary(
     end_date: str | None = Query(default=None),
 ) -> DailyCashSummary:
     return repository.get_daily_cash_summary(start_date=start_date, end_date=end_date)
+
+
+@router.get("/reports/export.csv")
+def export_reports_csv(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+) -> Response:
+    report_summary = repository.get_report_summary(start_date=start_date, end_date=end_date)
+    cash_summary = repository.get_daily_cash_summary(start_date=start_date, end_date=end_date)
+    sales = repository.list_sales_for_period(start_date=start_date, end_date=end_date)
+    sessions = repository.list_cash_sessions_for_period(start_date=start_date, end_date=end_date)
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+
+    writer.writerow(["tipo", "campo", "valor"])
+    writer.writerow(["periodo", "desde", start_date or ""])
+    writer.writerow(["periodo", "hasta", end_date or ""])
+    writer.writerow(["resumen", "recaudacion", report_summary.total_revenue])
+    writer.writerow(["resumen", "ganancia", report_summary.total_profit])
+    writer.writerow(["resumen", "ventas", report_summary.total_sales_count])
+    writer.writerow(["resumen", "unidades_vendidas", report_summary.total_units_sold])
+    writer.writerow(["caja", "esperado", cash_summary.expected_cash_now])
+    writer.writerow([])
+
+    writer.writerow(["ventas", "id", "codigo", "producto", "categoria", "cantidad", "precio_unitario", "recaudacion", "ganancia", "fecha"])
+    for sale in sales:
+        writer.writerow([
+            "venta",
+            sale.id,
+            sale.code,
+            sale.item_name,
+            sale.category,
+            sale.quantity,
+            sale.unit_price,
+            sale.revenue,
+            sale.profit,
+            sale.created_at,
+        ])
+
+    writer.writerow([])
+    writer.writerow(["jornadas", "id", "estado", "apertura", "cierre", "monto_inicial", "esperado", "real", "diferencia", "notas"])
+    for session in sessions:
+        writer.writerow([
+            "jornada",
+            session.id,
+            session.status,
+            session.opened_at,
+            session.closed_at or "",
+            session.opening_amount,
+            session.expected_cash_amount,
+            session.actual_cash_amount or "",
+            session.difference_amount or "",
+            session.notes,
+        ])
+
+    filename = f"tesoreria_{start_date or 'inicio'}_{end_date or 'hoy'}.csv"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/cash-session/open", response_model=CashSession, status_code=status.HTTP_201_CREATED)

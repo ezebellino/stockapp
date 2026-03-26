@@ -317,6 +317,44 @@ function App() {
     setProductForm({ ...emptyProductForm, category: categories[0]?.name ?? "General" });
   }
 
+  async function exportTreasuryCsv() {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/reports/export.csv${buildDateQuery(treasuryFilter)}`);
+      if (!response.ok) throw new Error("No se pudo exportar el CSV.");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `tesoreria-${treasuryFilter.startDate || "inicio"}-${treasuryFilter.endDate || "hoy"}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setMessage("Reporte CSV descargado correctamente.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function printTreasurySummary() {
+    const printWindow = window.open("", "_blank", "width=980,height=720");
+    if (!printWindow) {
+      setError("No se pudo abrir la vista de impresion.");
+      return;
+    }
+    const periodLabel = treasuryFilter.startDate || treasuryFilter.endDate ? `${treasuryFilter.startDate || "inicio"} a ${treasuryFilter.endDate || "hoy"}` : "Jornada actual";
+    const topProducts = reports.top_products.map((row) => `<li>${escapeHtml(row.name)}: ${row.quantity} uds - ${formatMoney(row.revenue)}</li>`).join("");
+    const sessions = cashSummary.recent_sessions.map((session) => `<tr><td>${session.id}</td><td>${escapeHtml(session.status)}</td><td>${escapeHtml(formatDateTime(session.opened_at))}</td><td>${escapeHtml(session.closed_at ? formatDateTime(session.closed_at) : "Abierta")}</td><td>${formatMoney(session.expected_cash_amount)}</td><td>${session.actual_cash_amount == null ? "-" : formatMoney(session.actual_cash_amount)}</td><td>${session.difference_amount == null ? "-" : formatMoney(session.difference_amount)}</td></tr>`).join("");
+    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Cierre de tesoreria</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#1f2937}h1,h2{margin:0 0 12px}section{margin-top:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid #d6d3d1;border-radius:16px;padding:16px;background:#faf7f2}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;font-size:12px}ul{padding-left:18px}small{color:#6b7280}</style></head><body><h1>Cierre de tesoreria</h1><small>Periodo: ${escapeHtml(periodLabel)}</small><section class="grid"><div class="card"><strong>Recaudacion</strong><div>${formatMoney(cashSummary.today_revenue)}</div></div><div class="card"><strong>Ganancia</strong><div>${formatMoney(cashSummary.today_profit)}</div></div><div class="card"><strong>Ventas</strong><div>${cashSummary.today_sales_count}</div></div><div class="card"><strong>Caja esperada</strong><div>${formatMoney(cashSummary.expected_cash_now)}</div></div></section><section><h2>Productos mas vendidos</h2><ul>${topProducts || "<li>Sin datos suficientes.</li>"}</ul></section><section><h2>Jornadas</h2><table><thead><tr><th>ID</th><th>Estado</th><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Real</th><th>Diferencia</th></tr></thead><tbody>${sessions || "<tr><td colspan=\"7\">Sin jornadas registradas.</td></tr>"}</tbody></table></section></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  }
+
   async function applyTreasuryFilter(event) {
     event.preventDefault();
     await refreshAll(treasuryFilter);
@@ -484,6 +522,8 @@ function App() {
                   <InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} />
                   <button type="submit" disabled={saving} className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">Aplicar filtro</button>
                   <button type="button" onClick={clearTreasuryFilter} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10">Ver todo</button>
+                  <button type="button" onClick={exportTreasuryCsv} disabled={saving} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Descargar CSV</button>
+                  <button type="button" onClick={printTreasurySummary} className="rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/20">Imprimir resumen</button>
                 </form>
                 {treasuryFilterActive ? <div className="mt-4 rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">Mostrando tesoreria desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}
               </Panel>
@@ -530,6 +570,7 @@ function formatMoney(value) { return money.format(Number(value || 0)); }
 function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }
 function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
 function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
+function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
 function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Esperado</span><span className="mt-1 block font-medium text-white">{formatMoney(session.expected_cash_amount)}</span></div><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Real / cierre</span><span className="mt-1 block font-medium text-white">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{session.notes}</div> : null}</div>; }
 function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3"><div className="font-medium text-white">{renderLabel(row)}</div><div className="text-sm text-slate-400">{renderMeta(row)}</div></div>)}</div></div>; }
 function RecentSaleCard({ sale }) { return <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{sale.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{sale.code} - {sale.category}</div></div><div className="text-right"><div className="font-medium text-emerald-200">{formatMoney(sale.revenue)}</div><div className="text-xs text-slate-400">{sale.quantity} uds</div></div></div><div className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{formatDateTime(sale.created_at)}</div></div>; }
@@ -547,6 +588,7 @@ function CategorySelect({ label, value, categories, onChange }) { return <label 
 const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><input ref={ref} {...props} className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" /></label>; });
 
 export default App;
+
 
 
 

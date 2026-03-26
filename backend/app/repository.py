@@ -685,6 +685,33 @@ class SQLiteStockRepository:
             (item_id, code, item_name, movement_type, quantity_delta, reference),
         )
 
+    def list_sales_for_period(self, *, start_date: str | None = None, end_date: str | None = None) -> list[SaleRecord]:
+        sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
+                FROM sales
+                {sales_filter_sql}
+                ORDER BY datetime(created_at) DESC, id DESC
+                """,
+                sales_filter_params,
+            ).fetchall()
+        return [self._to_sale(row) for row in rows]
+
+    def list_cash_sessions_for_period(self, *, start_date: str | None = None, end_date: str | None = None) -> list[CashSession]:
+        session_filter_sql, session_filter_params = self._build_session_period_filter(start_date=start_date, end_date=end_date)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                FROM cash_sessions
+                {session_filter_sql}
+                ORDER BY id DESC
+                """,
+                session_filter_params,
+            ).fetchall()
+        return [self._with_expected_cash(row) for row in rows]
     def _with_expected_cash(self, row: sqlite3.Row) -> CashSession:
         with self._connect() as connection:
             revenue_row = connection.execute(
