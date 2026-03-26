@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Control de Caja Diaria | LocalBiz Authority</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#83bad6",
+              "on-secondary-fixed": "#0b1e28",
+              "primary-fixed": "#bfe8ff",
+              "on-tertiary-fixed-variant": "#004f4f",
+              "surface-container-high": "#e5e8ee",
+              "tertiary": "#003535",
+              "surface-container-low": "#f1f4fa",
+              "secondary": "#4f616d",
+              "primary": "#003345",
+              "inverse-primary": "#96ceeb",
+              "on-primary-fixed-variant": "#044d65",
+              "on-background": "#181c20",
+              "primary-fixed-dim": "#96ceeb",
+              "inverse-surface": "#2d3135",
+              "outline-variant": "#c0c7cd",
+              "on-error-container": "#93000a",
+              "surface-container": "#ebeef4",
+              "secondary-fixed-dim": "#b6c9d7",
+              "outline": "#71787d",
+              "on-primary-fixed": "#001f2b",
+              "on-tertiary-container": "#70c0c0",
+              "surface-dim": "#d7dae0",
+              "on-tertiary-fixed": "#002020",
+              "on-primary": "#ffffff",
+              "surface": "#f7f9ff",
+              "tertiary-fixed-dim": "#84d4d3",
+              "background": "#f7f9ff",
+              "on-error": "#ffffff",
+              "secondary-container": "#cfe2f1",
+              "secondary-fixed": "#d2e5f3",
+              "inverse-on-surface": "#eef1f7",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "on-secondary": "#ffffff",
+              "surface-tint": "#2a657e",
+              "error": "#ba1a1a",
+              "surface-container-highest": "#dfe3e8",
+              "on-surface-variant": "#40484c",
+              "surface-variant": "#dfe3e8",
+              "error-container": "#ffdad6",
+              "primary-container": "#004b63",
+              "on-surface": "#181c20",
+              "tertiary-fixed": "#a0f0f0",
+              "tertiary-container": "#004e4e",
+              "on-secondary-fixed-variant": "#374954",
+              "on-secondary-container": "#536571",
+              "surface-bright": "#f7f9ff"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      body { font-family: 'Inter', sans-serif; }
+      h1, h2, h3 { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased">
+<!-- TopAppBar -->
+<header class="fixed top-0 z-40 w-full bg-[#f7f9ff] dark:bg-[#181c20] border-b border-[#c0c7cd]/15 flex justify-between items-center px-6 py-3 h-16">
+<div class="flex items-center gap-4">
+<span class="text-xl font-extrabold text-[#003345] dark:text-[#f7f9ff] tracking-tighter">LocalBiz Authority</span>
+<span class="hidden md:block h-6 w-[1px] bg-outline-variant/30"></span>
+<nav class="hidden md:flex gap-6 items-center">
+<a class="text-[#40484c] dark:text-[#c0c7cd] hover:bg-[#f1f4fa] dark:hover:bg-[#40484c]/20 transition-colors px-3 py-1 rounded-lg text-sm font-medium" href="#">Overview</a>
+<a class="text-[#003345] dark:text-[#f7f9ff] font-bold px-3 py-1 rounded-lg text-sm" href="#">Caja</a>
+<a class="text-[#40484c] dark:text-[#c0c7cd] hover:bg-[#f1f4fa] dark:hover:bg-[#40484c]/20 transition-colors px-3 py-1 rounded-lg text-sm font-medium" href="#">Reportes</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-[#40484c] hover:bg-[#f1f4fa] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-[#40484c] hover:bg-[#f1f4fa] rounded-full transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<img alt="Business Owner Profile" class="w-8 h-8 rounded-full border border-outline-variant/30" data-alt="professional headshot of a business owner in a modern office environment with soft natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAe1Qtkj7YU8El4B4CB04TDwLPsc0_FZl-DHM_XliC5Yw0Gs16LFBbDD8zPJrvqatFsQ8q1f7gSdpBdkdCe-61Sux-DeAv7zArYztpKAOZjhi7EdhW9WEePpa0wjHavOwCLhxXjtCLVcS-qtJqcfnQ1UGEy6U4miv2dlabZIsbcyUQqHVDCyarRqx71mp6vp0Dt3M_uPjJtfgXLKpISLshIaid0ivB6DItnTRWOY2P8mNrm-yxZLWzOmVOtsrcuxqBpB1KNSuXJkrQ"/>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-[#f7f9ff]/70 dark:bg-[#181c20]/70 backdrop-blur-xl border-r border-[#c0c7cd]/15 pt-20 pb-6 flex flex-col z-30 shadow-[0_8px_32px_rgba(24,28,32,0.06)] hidden md:flex">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-primary-container flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined" data-icon="store" style="font-variation-settings: 'FILL' 1;">store</span>
+</div>
+<div>
+<h3 class="text-[#003345] font-bold text-sm leading-none">Main Branch</h3>
+<p class="text-[10px] text-on-surface-variant mt-1">Status: Operational</p>
+</div>
+</div>
+</div>
+<nav class="flex-grow space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 text-[#40484c] hover:translate-x-1 transition-transform duration-200 hover:bg-[#f1f4fa]" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-medium text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#40484c] hover:translate-x-1 transition-transform duration-200 hover:bg-[#f1f4fa]" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-medium text-sm">Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 bg-[#003345] text-white rounded-lg mx-2 my-1 shadow-md" href="#">
+<span class="material-symbols-outlined" data-icon="payments" style="font-variation-settings: 'FILL' 1;">payments</span>
+<span class="font-medium text-sm">Cash Control</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#40484c] hover:translate-x-1 transition-transform duration-200 hover:bg-[#f1f4fa]" href="#">
+<span class="material-symbols-outlined" data-icon="campaign">campaign</span>
+<span class="font-medium text-sm">Marketing</span>
+</a>
+</nav>
+<div class="px-4 mt-auto space-y-1">
+<button class="w-full bg-primary text-on-primary py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mb-6 shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                New Entry
+            </button>
+<a class="flex items-center gap-3 px-6 py-3 text-[#40484c] hover:bg-[#f1f4fa] rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-medium text-sm">Help</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-error hover:bg-error-container/30 rounded-lg transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-medium text-sm">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="md:ml-64 pt-24 px-6 pb-12 min-h-screen">
+<div class="max-w-6xl mx-auto">
+<!-- Hero Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+<div>
+<span class="text-primary font-bold tracking-widest text-xs uppercase mb-2 block">Finanzas &amp; Operaciones</span>
+<h1 class="text-4xl md:text-5xl font-extrabold text-on-surface tracking-tight">Control de Caja</h1>
+<p class="text-on-surface-variant mt-2 text-lg">Resumen de flujos de efectivo y gestión de cierres diarios.</p>
+</div>
+<div class="flex gap-4">
+<div class="bg-surface-container-low px-6 py-4 rounded-xl flex flex-col items-end">
+<span class="text-on-surface-variant text-xs font-semibold uppercase tracking-wider">Fecha Actual</span>
+<span class="text-primary font-bold text-xl">24 Oct, 2023</span>
+</div>
+</div>
+</div>
+<!-- Bento Grid: Main Actions & Key Metrics -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-12">
+<!-- Open/Close Action Card -->
+<div class="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Abrir Caja -->
+<button class="group relative overflow-hidden bg-primary p-8 rounded-full flex flex-col justify-between h-64 text-left transition-all hover:shadow-2xl hover:shadow-primary/30">
+<div class="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-9xl" data-icon="lock_open">lock_open</span>
+</div>
+<div class="bg-primary-container w-14 h-14 rounded-full flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined text-3xl" data-icon="key">key</span>
+</div>
+<div>
+<h2 class="text-on-primary text-3xl font-extrabold tracking-tight">Abrir Caja</h2>
+<p class="text-primary-fixed-dim mt-2 text-sm max-w-[200px]">Inicia el turno con el saldo base verificado.</p>
+</div>
+</button>
+<!-- Cerrar Caja -->
+<button class="group relative overflow-hidden bg-surface-container-lowest border-2 border-primary p-8 rounded-full flex flex-col justify-between h-64 text-left transition-all hover:bg-primary/5">
+<div class="absolute top-0 right-0 p-8 opacity-5">
+<span class="material-symbols-outlined text-9xl" data-icon="lock">lock</span>
+</div>
+<div class="bg-error-container w-14 h-14 rounded-full flex items-center justify-center text-on-error-container">
+<span class="material-symbols-outlined text-3xl" data-icon="summarize">summarize</span>
+</div>
+<div>
+<h2 class="text-primary text-3xl font-extrabold tracking-tight">Cerrar Caja</h2>
+<p class="text-on-surface-variant mt-2 text-sm max-w-[200px]">Finaliza el día y genera reporte de arqueo.</p>
+</div>
+</button>
+</div>
+<!-- Live Summary Column -->
+<div class="lg:col-span-4 bg-surface-container-high p-8 rounded-xl flex flex-col justify-between border border-outline-variant/10">
+<div>
+<h3 class="text-on-surface-variant text-sm font-bold uppercase tracking-widest mb-6">Balance en Tiempo Real</h3>
+<div class="space-y-6">
+<div>
+<span class="text-on-surface-variant text-xs block mb-1">Total Ingresos</span>
+<div class="flex items-center gap-2">
+<span class="text-tertiary font-headline font-bold text-3xl">$4,250.00</span>
+<span class="text-tertiary bg-tertiary-fixed-dim/20 px-2 py-0.5 rounded text-[10px] font-bold">↑ 12%</span>
+</div>
+</div>
+<div class="h-[1px] bg-outline-variant/20"></div>
+<div>
+<span class="text-on-surface-variant text-xs block mb-1">Total Egresos</span>
+<div class="flex items-center gap-2">
+<span class="text-error font-headline font-bold text-3xl">$1,120.50</span>
+<span class="text-error bg-error-container px-2 py-0.5 rounded text-[10px] font-bold">↓ 4%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-6 border-t border-outline-variant/30">
+<span class="text-on-surface-variant text-xs font-bold block mb-1">BALANCE NETO</span>
+<span class="text-primary font-headline font-black text-5xl tracking-tighter">$3,129.50</span>
+</div>
+</div>
+</div>
+<!-- Transactional Ledger Table -->
+<section>
+<div class="flex items-center justify-between mb-8">
+<h2 class="text-2xl font-bold tracking-tight">Libro de Transacciones Diarias</h2>
+<div class="flex gap-2">
+<button class="bg-surface-container-low hover:bg-surface-container-high p-2 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="filter_list">filter_list</span>
+</button>
+<button class="bg-surface-container-low hover:bg-surface-container-high p-2 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="download">download</span>
+</button>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/5">
+<table class="w-full border-collapse">
+<thead>
+<tr class="bg-surface-container-low">
+<th class="text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Hora</th>
+<th class="text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Categoría</th>
+<th class="text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Descripción</th>
+<th class="text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Metodo</th>
+<th class="text-right px-6 py-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Monto</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<!-- Row 1 -->
+<tr class="hover:bg-surface transition-colors">
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">09:15 AM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase bg-tertiary-fixed-dim/20 text-tertiary">
+<span class="material-symbols-outlined text-xs" data-icon="trending_up">trending_up</span> Ingreso
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm font-semibold text-on-surface">Venta Mostrador #4521</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">Efectivo</td>
+<td class="px-6 py-5 text-right font-headline font-bold text-tertiary">+$125.00</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface transition-colors">
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">10:42 AM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase bg-error-container text-error">
+<span class="material-symbols-outlined text-xs" data-icon="trending_down">trending_down</span> Egreso
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm font-semibold text-on-surface">Pago Proveedor: Logística Soler</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">Transferencia</td>
+<td class="px-6 py-5 text-right font-headline font-bold text-error">-$850.00</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface transition-colors">
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">11:05 AM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase bg-tertiary-fixed-dim/20 text-tertiary">
+<span class="material-symbols-outlined text-xs" data-icon="trending_up">trending_up</span> Ingreso
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm font-semibold text-on-surface">Venta E-commerce #9928</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">Tarjeta</td>
+<td class="px-6 py-5 text-right font-headline font-bold text-tertiary">+$2,450.00</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface transition-colors">
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">12:30 PM</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase bg-error-container text-error">
+<span class="material-symbols-outlined text-xs" data-icon="trending_down">trending_down</span> Egreso
+                                    </span>
+</td>
+<td class="px-6 py-5 text-sm font-semibold text-on-surface">Reposición Caja Chica</td>
+<td class="px-6 py-5 text-sm text-on-surface-variant">Efectivo</td>
+<td class="px-6 py-5 text-right font-headline font-bold text-error">-$270.50</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-surface-container-lowest flex justify-around items-center py-4 border-t border-outline-variant/10 z-50">
+<button class="flex flex-col items-center gap-1 text-[#40484c]">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-[10px] font-bold">Dashboard</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-[#003345] font-bold">
+<span class="material-symbols-outlined" data-icon="payments" style="font-variation-settings: 'FILL' 1;">payments</span>
+<span class="text-[10px]">Caja</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-[#40484c]">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="text-[10px] font-bold">Inventory</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-[#40484c]">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-[10px] font-bold">Ajustes</span>
+</button>
+</nav>
+</body></html>

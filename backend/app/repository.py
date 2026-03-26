@@ -1,7 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sqlite3
 import unicodedata
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .models import (
@@ -102,6 +103,7 @@ class SQLiteStockRepository:
         self._ensure_legacy_columns()
         self._normalize_existing_categories()
         self._seed_if_empty()
+        self._seed_demo_activity_if_no_sales()
 
     def list_categories(self) -> list[Category]:
         with self._connect() as connection:
@@ -630,7 +632,7 @@ class SQLiteStockRepository:
             if category_count["total"] == 0:
                 connection.executemany(
                     "INSERT INTO categories (name) VALUES (?)",
-                    [("General",), ("Almacen",), ("Snacks",), ("Limpieza",)],
+                    [("General",), ("Almacen",), ("Snacks",), ("Limpieza",), ("Bebidas",)],
                 )
 
             row = connection.execute("SELECT COUNT(*) AS total FROM items").fetchone()
@@ -641,13 +643,128 @@ class SQLiteStockRepository:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
-                        ("7791234567890", "Yerba Tradicional 1kg", "Almacen", 12, 5, 4890, 3200),
-                        ("7501000123456", "Galletitas de avena", "Snacks", 24, 6, 2150, 1200),
-                        ("0001122233334", "Detergente citrico", "Limpieza", 18, 8, 3400, 2100),
+                        ("7791234567890", "Yerba Tradicional 1kg", "Almacen", 18, 5, 4890, 3200),
+                        ("7501000123456", "Galletitas de avena", "Snacks", 30, 6, 2150, 1200),
+                        ("0001122233334", "Detergente citrico", "Limpieza", 22, 8, 3400, 2100),
+                        ("7798123400011", "Cafe molido clasico 500g", "Almacen", 16, 4, 4250, 2800),
+                        ("7790987654321", "Gaseosa cola 2.25L", "Bebidas", 26, 8, 3100, 1800),
                     ],
                 )
             connection.commit()
 
+    def _seed_demo_activity_if_no_sales(self) -> None:
+        demo_catalog = [
+            {"code": "7791234567890", "name": "Yerba Tradicional 1kg", "category": "Almacen", "quantity": 18, "min_quantity": 5, "sale_price": 4890, "cost_price": 3200},
+            {"code": "7501000123456", "name": "Galletitas de avena", "category": "Snacks", "quantity": 30, "min_quantity": 6, "sale_price": 2150, "cost_price": 1200},
+            {"code": "0001122233334", "name": "Detergente citrico", "category": "Limpieza", "quantity": 22, "min_quantity": 8, "sale_price": 3400, "cost_price": 2100},
+            {"code": "7798123400011", "name": "Cafe molido clasico 500g", "category": "Almacen", "quantity": 16, "min_quantity": 4, "sale_price": 4250, "cost_price": 2800},
+            {"code": "7790987654321", "name": "Gaseosa cola 2.25L", "category": "Bebidas", "quantity": 26, "min_quantity": 8, "sale_price": 3100, "cost_price": 1800},
+        ]
+        demo_sales = [
+            {"code": "7791234567890", "amount": 2, "days_ago": 6, "hour": 10, "minute": 15},
+            {"code": "7501000123456", "amount": 3, "days_ago": 6, "hour": 18, "minute": 40},
+            {"code": "0001122233334", "amount": 1, "days_ago": 5, "hour": 11, "minute": 5},
+            {"code": "7798123400011", "amount": 2, "days_ago": 4, "hour": 17, "minute": 20},
+            {"code": "7790987654321", "amount": 4, "days_ago": 4, "hour": 20, "minute": 10},
+            {"code": "7791234567890", "amount": 1, "days_ago": 3, "hour": 9, "minute": 50},
+            {"code": "7501000123456", "amount": 2, "days_ago": 2, "hour": 13, "minute": 30},
+            {"code": "7790987654321", "amount": 5, "days_ago": 2, "hour": 19, "minute": 15},
+            {"code": "0001122233334", "amount": 2, "days_ago": 1, "hour": 12, "minute": 10},
+            {"code": "7798123400011", "amount": 1, "days_ago": 1, "hour": 17, "minute": 45},
+            {"code": "7791234567890", "amount": 2, "days_ago": 0, "hour": 10, "minute": 5},
+            {"code": "7790987654321", "amount": 3, "days_ago": 0, "hour": 21, "minute": 0},
+        ]
+        required_units = {}
+        for sale in demo_sales:
+            required_units[sale["code"]] = required_units.get(sale["code"], 0) + sale["amount"]
+
+        with self._connect() as connection:
+            sales_count = connection.execute("SELECT COUNT(*) AS total FROM sales").fetchone()
+            if sales_count["total"] > 0:
+                return
+
+            category_rows = connection.execute("SELECT id, name FROM categories").fetchall()
+            for product in demo_catalog:
+                category_name = self._canonicalize_label(product["category"])
+                category_exists = next((row for row in category_rows if self._normalize_text_key(row["name"]) == self._normalize_text_key(category_name)), None)
+                if category_exists is None:
+                    connection.execute("INSERT INTO categories (name) VALUES (?)", (category_name,))
+                    category_rows = connection.execute("SELECT id, name FROM categories").fetchall()
+
+            existing_rows = connection.execute(
+                "SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price FROM items"
+            ).fetchall()
+            existing_by_code = {row["code"]: row for row in existing_rows}
+            for product in demo_catalog:
+                if product["code"] in existing_by_code:
+                    continue
+                connection.execute(
+                    """
+                    INSERT INTO items (code, name, category, quantity, min_quantity, sale_price, cost_price)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        product["code"],
+                        product["name"],
+                        self._canonicalize_label(product["category"]),
+                        product["quantity"],
+                        product["min_quantity"],
+                        product["sale_price"],
+                        product["cost_price"],
+                    ),
+                )
+
+            existing_rows = connection.execute(
+                "SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price FROM items"
+            ).fetchall()
+            existing_by_code = {row["code"]: row for row in existing_rows}
+            for code, units_needed in required_units.items():
+                row = existing_by_code.get(code)
+                if row is None:
+                    continue
+                desired_quantity = max(row["quantity"], units_needed + row["min_quantity"] + 4)
+                if desired_quantity != row["quantity"]:
+                    connection.execute("UPDATE items SET quantity = ? WHERE id = ?", (desired_quantity, row["id"]))
+
+            existing_rows = connection.execute(
+                "SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price FROM items"
+            ).fetchall()
+            existing_by_code = {row["code"]: row for row in existing_rows}
+            now = datetime.now().replace(second=0, microsecond=0)
+            for sale in demo_sales:
+                row = existing_by_code.get(sale["code"])
+                if row is None:
+                    continue
+                created_at = (now - timedelta(days=sale["days_ago"])) .replace(hour=sale["hour"], minute=sale["minute"])
+                created_at_value = created_at.strftime("%Y-%m-%d %H:%M:%S")
+                connection.execute("UPDATE items SET quantity = quantity - ? WHERE id = ?", (sale["amount"], row["id"]))
+                connection.execute(
+                    """
+                    INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, cost_price, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["id"],
+                        row["code"],
+                        row["name"],
+                        row["category"],
+                        sale["amount"],
+                        row["sale_price"],
+                        row["cost_price"],
+                        created_at_value,
+                    ),
+                )
+                self._record_movement(
+                    connection,
+                    item_id=row["id"],
+                    code=row["code"],
+                    item_name=row["name"],
+                    movement_type="SALE",
+                    quantity_delta=-sale["amount"],
+                    reference="Venta demo",
+                    created_at=created_at_value,
+                )
+            connection.commit()
     def _ensure_legacy_columns(self) -> None:
         with self._connect() as connection:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(items)").fetchall()}
@@ -707,15 +824,25 @@ class SQLiteStockRepository:
         movement_type: str,
         quantity_delta: int,
         reference: str,
+        created_at: str | None = None,
     ) -> None:
+        if created_at is None:
+            connection.execute(
+                """
+                INSERT INTO movements (item_id, code, item_name, movement_type, quantity_delta, reference)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (item_id, code, item_name, movement_type, quantity_delta, reference),
+            )
+            return
+
         connection.execute(
             """
-            INSERT INTO movements (item_id, code, item_name, movement_type, quantity_delta, reference)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO movements (item_id, code, item_name, movement_type, quantity_delta, reference, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (item_id, code, item_name, movement_type, quantity_delta, reference),
+            (item_id, code, item_name, movement_type, quantity_delta, reference, created_at),
         )
-
     def list_sales_for_period(self, *, start_date: str | None = None, end_date: str | None = None) -> list[SaleRecord]:
         sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
         with self._connect() as connection:
@@ -955,3 +1082,6 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+

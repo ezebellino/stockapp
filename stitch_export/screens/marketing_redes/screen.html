@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary-container": "#83bad6",
+              "on-secondary-fixed": "#0b1e28",
+              "primary-fixed": "#bfe8ff",
+              "on-tertiary-fixed-variant": "#004f4f",
+              "surface-container-high": "#e5e8ee",
+              "tertiary": "#003535",
+              "surface-container-low": "#f1f4fa",
+              "secondary": "#4f616d",
+              "primary": "#003345",
+              "inverse-primary": "#96ceeb",
+              "on-primary-fixed-variant": "#044d65",
+              "on-background": "#181c20",
+              "primary-fixed-dim": "#96ceeb",
+              "inverse-surface": "#2d3135",
+              "outline-variant": "#c0c7cd",
+              "on-error-container": "#93000a",
+              "surface-container": "#ebeef4",
+              "secondary-fixed-dim": "#b6c9d7",
+              "outline": "#71787d",
+              "on-primary-fixed": "#001f2b",
+              "on-tertiary-container": "#70c0c0",
+              "surface-dim": "#d7dae0",
+              "on-tertiary-fixed": "#002020",
+              "on-primary": "#ffffff",
+              "surface": "#f7f9ff",
+              "tertiary-fixed-dim": "#84d4d3",
+              "background": "#f7f9ff",
+              "on-error": "#ffffff",
+              "secondary-container": "#cfe2f1",
+              "secondary-fixed": "#d2e5f3",
+              "inverse-on-surface": "#eef1f7",
+              "surface-container-lowest": "#ffffff",
+              "on-tertiary": "#ffffff",
+              "on-secondary": "#ffffff",
+              "surface-tint": "#2a657e",
+              "error": "#ba1a1a",
+              "surface-container-highest": "#dfe3e8",
+              "on-surface-variant": "#40484c",
+              "surface-variant": "#dfe3e8",
+              "error-container": "#ffdad6",
+              "primary-container": "#004b63",
+              "on-surface": "#181c20",
+              "tertiary-fixed": "#a0f0f0",
+              "tertiary-container": "#004e4e",
+              "on-secondary-fixed-variant": "#374954",
+              "on-secondary-container": "#536571",
+              "surface-bright": "#f7f9ff"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-effect {
+        backdrop-filter: blur(20px);
+        background-color: rgba(247, 249, 255, 0.7);
+      }
+    </style>
+</head>
+<body class="bg-background font-body text-on-surface">
+<!-- TopAppBar -->
+<header class="fixed top-0 z-40 w-full bg-[#f7f9ff] dark:bg-[#181c20] border-b border-[#c0c7cd]/15 px-6 py-3 flex justify-between items-center">
+<div class="flex items-center gap-4">
+<span class="text-xl font-extrabold text-[#003345] dark:text-[#f7f9ff] tracking-tighter font-headline">LocalBiz Authority</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-surface-container-low px-4 py-2 rounded-full">
+<span class="material-symbols-outlined text-on-surface-variant mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm w-64" placeholder="Buscar métricas..." type="text"/>
+</div>
+<button class="p-2 rounded-full hover:bg-[#f1f4fa] dark:hover:bg-[#40484c]/20 transition-colors">
+<span class="material-symbols-outlined text-[#003345] dark:text-[#cfe2f1]">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-[#f1f4fa] dark:hover:bg-[#40484c]/20 transition-colors">
+<span class="material-symbols-outlined text-[#003345] dark:text-[#cfe2f1]">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container-high border border-outline-variant/15">
+<img alt="Business Owner Profile" data-alt="professional portrait of a business owner in a modern office environment with soft natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDM15J8rPu9SwwWMvqFtg1sFXqBYBk0ywnSNhluM7iPpp7eq_Qf4sXqIcEvIhHj4m5OUNSwYyWfo4nIMjO26CDL2ZK3II4J2NUqW072k3cVQSzlG6U3ZX--GW5E9SvMUc944WSUTfLGxlwYqR6teWwJ0zzjjogm_u3oHnFVLy5o1mZGcz4RLVdoW9PrZrXaYh9_A2kx_f3d9iuZNlFZJRGJr_RSmaNjALqra_acY149sEgcHa38z22Ioxw1Z-UqqPjn56z7fehvqTE"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 flex flex-col pt-20 pb-6 bg-[#f7f9ff]/70 backdrop-blur-xl border-r border-[#c0c7cd]/15 z-30">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-white">store</span>
+</div>
+<div>
+<p class="text-sm font-bold text-[#003345]">Main Branch</p>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest">Status: Operational</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 px-2 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 bg-[#003345] text-white rounded-lg mx-2 my-1 transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-medium text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#40484c] hover:bg-[#f1f4fa] mx-2 my-1 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="font-medium text-sm">Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#40484c] hover:bg-[#f1f4fa] mx-2 my-1 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">payments</span>
+<span class="font-medium text-sm">Cash Control</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#40484c] hover:bg-[#f1f4fa] mx-2 my-1 rounded-lg transition-transform hover:translate-x-1" href="#">
+<span class="material-symbols-outlined">campaign</span>
+<span class="font-medium text-sm">Marketing</span>
+</a>
+</nav>
+<div class="mt-auto px-2 space-y-1">
+<button class="w-[calc(100%-1rem)] mx-2 mb-4 py-3 bg-primary text-white rounded-lg font-bold text-sm shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">add</span>
+                New Entry
+            </button>
+<a class="flex items-center gap-3 px-4 py-3 text-[#40484c] hover:bg-[#f1f4fa] mx-2 my-1 rounded-lg" href="#">
+<span class="material-symbols-outlined">help</span>
+<span class="font-medium text-sm">Help</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-[#40484c] hover:bg-[#f1f4fa] mx-2 my-1 rounded-lg" href="#">
+<span class="material-symbols-outlined text-logout">logout</span>
+<span class="font-medium text-sm">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 pt-24 px-8 pb-12 bg-background min-h-screen">
+<header class="mb-10">
+<h1 class="text-4xl font-extrabold font-headline text-on-surface tracking-tight mb-2">Panel de Redes Sociales</h1>
+<p class="text-on-surface-variant">Gestión editorial y métricas de autoridad para tu emprendimiento.</p>
+</header>
+<!-- Metrics Grid (Asymmetric) -->
+<div class="grid grid-cols-12 gap-6 mb-12">
+<!-- Instagram Card -->
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start mb-6">
+<div class="p-3 rounded-full bg-secondary-container text-on-secondary-container">
+<span class="material-symbols-outlined">photo_camera</span>
+</div>
+<span class="text-[10px] font-bold py-1 px-2 rounded-full bg-tertiary-container text-tertiary-fixed tracking-wider">INSTAGRAM</span>
+</div>
+<div class="space-y-1">
+<p class="text-on-surface-variant text-sm font-medium">Seguidores Totales</p>
+<h2 class="text-3xl font-extrabold font-headline text-on-surface">12.4k</h2>
+<div class="flex items-center gap-1 text-tertiary text-xs font-bold pt-2">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+8.2% este mes</span>
+</div>
+</div>
+<div class="mt-6 pt-6 border-t border-outline-variant/10 flex justify-between">
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Alcance</p>
+<p class="text-sm font-bold">45.2k</p>
+</div>
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Interacción</p>
+<p class="text-sm font-bold">4.8%</p>
+</div>
+</div>
+</div>
+<!-- Facebook Card -->
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start mb-6">
+<div class="p-3 rounded-full bg-secondary-container text-on-secondary-container">
+<span class="material-symbols-outlined">social_leaderboard</span>
+</div>
+<span class="text-[10px] font-bold py-1 px-2 rounded-full bg-tertiary-container text-tertiary-fixed tracking-wider">FACEBOOK</span>
+</div>
+<div class="space-y-1">
+<p class="text-on-surface-variant text-sm font-medium">Me gusta de la página</p>
+<h2 class="text-3xl font-extrabold font-headline text-on-surface">8.9k</h2>
+<div class="flex items-center gap-1 text-tertiary text-xs font-bold pt-2">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+2.4% este mes</span>
+</div>
+</div>
+<div class="mt-6 pt-6 border-t border-outline-variant/10 flex justify-between">
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Impresiones</p>
+<p class="text-sm font-bold">92.1k</p>
+</div>
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Clicks</p>
+<p class="text-sm font-bold">1,240</p>
+</div>
+</div>
+</div>
+<!-- WhatsApp Business Card -->
+<div class="col-span-12 md:col-span-4 bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start mb-6">
+<div class="p-3 rounded-full bg-tertiary-container text-tertiary-fixed">
+<span class="material-symbols-outlined">chat</span>
+</div>
+<span class="text-[10px] font-bold py-1 px-2 rounded-full bg-tertiary-container text-tertiary-fixed tracking-wider">WHATSAPP</span>
+</div>
+<div class="space-y-1">
+<p class="text-on-surface-variant text-sm font-medium">Conversaciones Activas</p>
+<h2 class="text-3xl font-extrabold font-headline text-on-surface">142</h2>
+<div class="flex items-center gap-1 text-error text-xs font-bold pt-2">
+<span class="material-symbols-outlined text-sm">history</span>
+<span>Respuesta: 12 min</span>
+</div>
+</div>
+<div class="mt-6 pt-6 border-t border-outline-variant/10 flex justify-between">
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Nuevos Leads</p>
+<p class="text-sm font-bold">28 hoy</p>
+</div>
+<div>
+<p class="text-[10px] text-on-surface-variant uppercase">Tasa Cierre</p>
+<p class="text-sm font-bold">18%</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Bento Layout: Scheduler & Content -->
+<div class="grid grid-cols-12 gap-6 items-start">
+<!-- Scheduling Module -->
+<div class="col-span-12 lg:col-span-8 bg-surface-container-low rounded-xl p-8 overflow-hidden relative border border-outline-variant/5">
+<div class="flex justify-between items-center mb-8">
+<div>
+<h3 class="text-2xl font-bold font-headline text-primary tracking-tight">Programar Contenido</h3>
+<p class="text-sm text-on-surface-variant">Planifica tu próxima gran publicación editorial.</p>
+</div>
+<button class="bg-primary text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-sm">calendar_month</span>
+                        Abrir Calendario
+                    </button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Composer -->
+<div class="space-y-4">
+<div class="space-y-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Copy de la publicación</label>
+<textarea class="w-full bg-surface-container-highest border-b border-primary border-t-0 border-x-0 rounded-t-lg focus:ring-0 text-sm" placeholder="Escribe aquí tu próxima publicación..." rows="4"></textarea>
+</div>
+<div class="flex gap-4">
+<div class="flex-1 space-y-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Fecha</label>
+<input class="w-full bg-surface-container-highest border-b border-primary border-t-0 border-x-0 rounded-t-lg focus:ring-0 text-sm" type="date"/>
+</div>
+<div class="flex-1 space-y-1">
+<label class="text-[10px] font-bold text-on-surface-variant uppercase ml-1">Canales</label>
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded-lg bg-surface-container-highest border border-outline-variant/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm">photo_camera</span>
+</button>
+<button class="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">social_leaderboard</span>
+</button>
+<button class="w-10 h-10 rounded-lg bg-surface-container-highest border border-outline-variant/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm">chat</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Media Upload -->
+<div class="bg-surface-container-highest rounded-xl border-2 border-dashed border-outline-variant/30 flex flex-col items-center justify-center p-6 text-center">
+<span class="material-symbols-outlined text-4xl text-outline mb-2">cloud_upload</span>
+<p class="text-sm font-bold text-on-surface mb-1">Arrastra tus archivos</p>
+<p class="text-xs text-on-surface-variant px-4">Sube imágenes o videos en alta resolución para mantener la calidad editorial.</p>
+<button class="mt-4 px-4 py-2 bg-secondary-container text-on-secondary-container rounded-lg text-xs font-bold">Seleccionar Archivos</button>
+</div>
+</div>
+</div>
+<!-- Recent Posts Feed -->
+<div class="col-span-12 lg:col-span-4 bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<h3 class="text-lg font-bold font-headline text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">visibility</span>
+                    Últimos Posts
+                </h3>
+<div class="space-y-6">
+<!-- Post Item -->
+<div class="flex gap-4 group">
+<div class="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+<img alt="Market fresh products" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="vibrant display of organic vegetables and fruits at a high-end farmers market with beautiful natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUwaYwKpGM9SJ0m1svJusn-aOGBjnUTbNX_kZ7Jf3uzAGA2G-ndeqIFMVXhxFhSsjALRcB9iz67hgpifrokR49isvU8A-8FnsKitLGWt8UZyt_396odh5jznHyeeaNRHEspg_ZHdEgfjyf2WkWYl5YOUoGyQeBpB0gxV01A7q97u91WoddX2lg_CPSApPJPTk-mNw7vxKuX3egxbAIU6ieE8r5hm9N55wnh58Ijv-nws1bi_Wm6w1K4bwskXAQO5HDTYrPteBL75Q"/>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[12px] text-primary">photo_camera</span>
+<span class="text-[10px] font-bold text-on-surface-variant">24 OCT • Instagram</span>
+</div>
+<p class="text-sm font-medium text-on-surface line-clamp-2 leading-snug">Lanzamiento de nuestra nueva línea artesanal orgánica...</p>
+<div class="flex gap-4 mt-2">
+<span class="text-[10px] text-tertiary flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[14px]">favorite</span> 1.2k
+                                </span>
+<span class="text-[10px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">chat_bubble</span> 84
+                                </span>
+</div>
+</div>
+</div>
+<!-- Post Item -->
+<div class="flex gap-4 group">
+<div class="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+<img alt="Customer service interaction" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="professional barista serving a customer with a warm smile in a modern minimalist cafe setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDp8RsTEduJMQaSTZrvriwC_F0sTRJ177_XyG0rZl71do46Iiprg1z70Xro474N786Phjh4PaLprcM7_2CBqqvLL1FPIjO4vUFh0crYdXJSMbeKx51lxwPBjS9vcogtAFAaA9Qw4eLCNgB4zQNdEDnwK4F1YFcA9TcbKuJJRJGjWgjrrXUw1RNoBvqd9pxd71sKoVEdc-E0Kwu-hpkj0ONqtrps5xIL3XaKCQV-kSvLOsJyWTjy3Ly1bA5t8SBySciPWsnvEphJfjU"/>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[12px] text-primary">social_leaderboard</span>
+<span class="text-[10px] font-bold text-on-surface-variant">22 OCT • Facebook</span>
+</div>
+<p class="text-sm font-medium text-on-surface line-clamp-2 leading-snug">¡Nuevos horarios extendidos para el fin de semana!</p>
+<div class="flex gap-4 mt-2">
+<span class="text-[10px] text-tertiary flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[14px]">thumb_up</span> 432
+                                </span>
+<span class="text-[10px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">share</span> 12
+                                </span>
+</div>
+</div>
+</div>
+<!-- Post Item -->
+<div class="flex gap-4 group">
+<div class="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container-high flex items-center justify-center">
+<span class="material-symbols-outlined text-4xl text-outline-variant">movie</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="material-symbols-outlined text-[12px] text-primary">photo_camera</span>
+<span class="text-[10px] font-bold text-on-surface-variant">20 OCT • Instagram</span>
+</div>
+<p class="text-sm font-medium text-on-surface line-clamp-2 leading-snug">Detrás de escena: El proceso de tostado de nuestro café.</p>
+<div class="flex gap-4 mt-2">
+<span class="text-[10px] text-tertiary flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[14px]">play_circle</span> 3.1k
+                                </span>
+<span class="text-[10px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">bookmark</span> 156
+                                </span>
+</div>
+</div>
+</div>
+</div>
+<button class="w-full mt-8 py-3 border border-outline-variant/30 text-primary text-xs font-bold rounded-lg hover:bg-surface-container-low transition-colors">
+                    Ver Historial Completo
+                </button>
+</div>
+</div>
+<!-- Audience Insights Asymmetric Table -->
+<section class="mt-12">
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm border border-outline-variant/10">
+<div class="px-8 py-6 border-b border-outline-variant/10 flex justify-between items-center">
+<h3 class="text-xl font-bold font-headline text-on-surface tracking-tight">Análisis de Audiencia por Canal</h3>
+<div class="flex gap-2">
+<span class="w-3 h-3 rounded-full bg-primary"></span>
+<span class="w-3 h-3 rounded-full bg-secondary-container"></span>
+<span class="w-3 h-3 rounded-full bg-outline-variant/30"></span>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-surface-container-low">
+<th class="px-8 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Plataforma</th>
+<th class="px-8 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest text-center">Engagement Rate</th>
+<th class="px-8 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest text-center">Peak Time</th>
+<th class="px-8 py-4 text-[10px] font-bold text-on-surface-variant uppercase tracking-widest text-right">Crecimiento</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/5">
+<tr class="hover:bg-surface-container-lowest transition-colors">
+<td class="px-8 py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm">photo_camera</span>
+</div>
+<span class="text-sm font-bold">Instagram Global</span>
+</div>
+</td>
+<td class="px-8 py-6 text-center">
+<span class="text-sm font-medium">4.82%</span>
+<div class="w-24 h-1 bg-outline-variant/20 mx-auto mt-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[48%]"></div>
+</div>
+</td>
+<td class="px-8 py-6 text-center">
+<span class="px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-[10px] font-bold">19:00 - 21:00</span>
+</td>
+<td class="px-8 py-6 text-right">
+<span class="text-sm font-bold text-tertiary">+12.5%</span>
+</td>
+</tr>
+<tr class="bg-surface-container-low/30 hover:bg-surface-container-lowest transition-colors">
+<td class="px-8 py-6">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm">social_leaderboard</span>
+</div>
+<span class="text-sm font-bold">Facebook Page</span>
+</div>
+</td>
+<td class="px-8 py-6 text-center">
+<span class="text-sm font-medium">2.15%</span>
+<div class="w-24 h-1 bg-outline-variant/20 mx-auto mt-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[21%]"></div>
+</div>
+</td>
+<td class="px-8 py-6 text-center">
+<span class="px-3 py-1 bg-secondary-container text-on-secondary-container rounded-full text-[10px] font-bold">11:00 - 13:00</span>
+</td>
+<td class="px-8 py-6 text-right">
+<span class="text-sm font-bold text-tertiary">+3.2%</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+</main>
+<!-- Contextual FAB (Hidden on detail, but visible here as it's the main dashboard) -->
+<button class="fixed bottom-8 right-8 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-50">
+<span class="material-symbols-outlined text-2xl" data-weight="fill">add</span>
+</button>
+</body></html>
