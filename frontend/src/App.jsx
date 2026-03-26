@@ -1,31 +1,11 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, SidebarLink, StatusPanel, ThemeToggle } from "./components/AppUI";
+import HomeSection from "./sections/HomeSection";
+import InventorySection from "./sections/InventorySection";
+import TreasurySection from "./sections/TreasurySection";
+import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
+import { buildBusinessProfileForm, buildDateQuery, buildInitials, buildTreasuryPresetFilter, createEmptyCashSummary, createEmptyReports, escapeHtml, formatDate, formatDateTime, formatInteger, formatMoney, handleText, normalizeProductForm, normalizeText, readLocalJson, sectionDescription, sectionEyebrow, sectionTitle } from "./lib/appHelpers";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
-const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
-const integer = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
-const emptyProductForm = { code: "", name: "", category: "General", quantity: 0, min_quantity: 0, sale_price: 0, cost_price: 0 };
-const emptySaleForm = { code: "", amount: 1, unit_price: "" };
-const emptyCashOpenForm = { opening_amount: "", notes: "" };
-const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
-const emptyTreasuryFilter = { startDate: "", endDate: "" };
-const emptyBusinessProfile = { businessName: "", businessAddress: "", businessWhatsapp: "", businessTaxId: "", businessLogoDataUrl: "" };
-const emptyAccessSetup = { ...emptyBusinessProfile, userName: "", password: "", confirmPassword: "" };
-const emptyLoginForm = { userName: "", password: "" };
-const availableThemes = {
-  dark: { label: "Oscuro", modeLabel: "Operacion nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
-  sepia: { label: "Claro sepia", modeLabel: "Operacion calida", summary: "Una variante amable y luminosa para jornadas largas." },
-  enterprise: { label: "Empresarial", modeLabel: "Editorial ejecutivo", summary: "Preset inspirado en Stitch para direccion, metricas y lectura institucional." },
-};
-const navItems = [
-  { id: "home", label: "Inicio", short: "IN" },
-  { id: "inventory", label: "Inventario", short: "IV" },
-  { id: "treasury", label: "Tesorería", short: "TS" },
-];
-const scanLockMs = 1200;
-const accessStorageKey = "appstock-local-access";
-const sessionStorageKey = "appstock-session-open";
-const activeSectionStorageKey = "appstock-active-section";
-
 function App() {
   const [items, setItems] = useState([]);
   const [reports, setReports] = useState(createEmptyReports());
@@ -56,6 +36,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [accessConfig, setAccessConfig] = useState(null);
   const [sessionOpen, setSessionOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [accessSetupForm, setAccessSetupForm] = useState(emptyAccessSetup);
   const [businessProfileForm, setBusinessProfileForm] = useState(emptyBusinessProfile);
   const [loginForm, setLoginForm] = useState(emptyLoginForm);
@@ -78,6 +59,7 @@ function App() {
     if (window.localStorage.getItem(sessionStorageKey) === "open") setSessionOpen(true);
     const savedSection = window.localStorage.getItem(activeSectionStorageKey);
     if (savedSection && navItems.some((item) => item.id === savedSection)) setActiveSection(savedSection);
+    if (window.localStorage.getItem(sidebarCollapsedStorageKey) === "true") setSidebarCollapsed(true);
   }, []);
 
   useEffect(() => {
@@ -89,6 +71,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(activeSectionStorageKey, activeSection);
   }, [activeSection]);
+
+  useEffect(() => {
+    window.localStorage.setItem(sidebarCollapsedStorageKey, String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!sessionOpen) return undefined;
@@ -349,13 +335,13 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo registrar la venta.");
       setSaleForm(emptySaleForm);
-      setMessage(`Venta registrada para ${data.item_name}. Preparando ticket de impresion.`);
+      setMessage(`Venta registrada para ${data.item_name}. Preparando ticket de impresión.`);
       setScanState("success");
       playTone("success");
       await refreshAll();
-      const printStarted = printSaleTicket(data, { business: accessConfig, cashierName: accessConfig?.userName || "Mostrador" });
+      const printStarted = printSaleTicket(data, { business: accessConfig, cashierName: accessConfig?.userName || "Mostrador", channelLabel: "Mostrador" });
       if (!printStarted) {
-        setMessage(`Venta registrada para ${data.item_name}. Habilita las ventanas emergentes para imprimir el ticket.`);
+        setMessage(`Venta registrada para ${data.item_name}. Habilitá las ventanas emergentes para imprimir el ticket.`);
       }
       focusScanner();
     } catch (err) {
@@ -539,55 +525,71 @@ function App() {
 
 
   function printSaleTicket(sale, options) {
-    const printWindow = window.open("", "_blank", "width=420,height=760");
-    if (!printWindow) return false;
+  const printWindow = window.open("", "_blank", "width=420,height=760");
+  if (!printWindow) return false;
 
-    const branchLabel = escapeHtml(options?.branchName || "Comercio");
-    const cashierLabel = escapeHtml(options?.cashierName || "Mostrador");
-    const saleNumber = `V-${String(sale.id).padStart(6, "0")}`;
-    const saleDateTime = formatDateTime(sale.created_at);
-    const subtotal = Number(sale.quantity) * Number(sale.unit_price);
-    const html = `<!doctype html>
+  const business = options?.business ?? {};
+  const branchLabel = escapeHtml(business.businessName || options?.branchName || "Comercio");
+  const businessAddress = business.businessAddress ? escapeHtml(business.businessAddress) : "";
+  const businessWhatsapp = business.businessWhatsapp ? escapeHtml(business.businessWhatsapp) : "";
+  const businessTaxId = business.businessTaxId ? escapeHtml(business.businessTaxId) : "";
+  const businessLogo = business.businessLogoDataUrl || "";
+  const cashierLabel = escapeHtml(options?.cashierName || "Mostrador");
+  const channelLabel = escapeHtml(options?.channelLabel || "Mostrador");
+  const saleNumber = `V-${String(sale.id).padStart(6, "0")}`;
+  const saleDateTime = formatDateTime(sale.created_at);
+  const subtotal = Number(sale.quantity) * Number(sale.unit_price);
+  const ticketMeta = [
+    businessAddress,
+    businessWhatsapp ? `WhatsApp ${businessWhatsapp}` : "",
+    businessTaxId ? `CUIT ${businessTaxId}` : "",
+  ].filter(Boolean).join(" · ");
+  const logoMarkup = businessLogo ? `<div class="logo-wrap"><img src="${businessLogo}" alt="Logo del comercio" class="logo" /></div>` : "";
+  const html = `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <title>Ticket ${saleNumber}</title>
 <style>
-  @page { size: auto; margin: 10mm; }
+  @page { size: 80mm auto; margin: 0; }
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #f5f1ea; color: #1f2937; font-family: "Segoe UI", Arial, sans-serif; }
-  .sheet { width: min(100%, 78mm); margin: 0 auto; background: #fffdf9; border: 1px solid #e7ded1; border-radius: 24px; padding: 20px 18px; }
-  .top { text-align: center; padding-bottom: 14px; border-bottom: 1px dashed #cfbfab; }
-  .eyebrow { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: #8b6f56; }
-  h1 { margin: 8px 0 0; font-size: 24px; line-height: 1.1; }
-  .meta, .foot { color: #6b7280; font-size: 11px; }
-  .badge { display: inline-block; margin-top: 10px; padding: 6px 10px; border-radius: 999px; background: #0f4c63; color: #f8fafc; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
-  .section { margin-top: 16px; }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 12px; }
+  body { margin: 0; background: #efe7dc; color: #1f2937; font-family: "Segoe UI", Arial, sans-serif; }
+  .sheet { width: 80mm; min-height: 100vh; margin: 0 auto; background: #fffdfa; padding: 10mm 7mm 8mm; }
+  .top { text-align: center; border-bottom: 1px dashed #c8b6a1; padding-bottom: 12px; }
+  .logo-wrap { display: flex; justify-content: center; margin-bottom: 10px; }
+  .logo { max-width: 26mm; max-height: 18mm; object-fit: contain; }
+  .eyebrow { font-size: 9px; letter-spacing: 0.26em; text-transform: uppercase; color: #8a6f57; }
+  h1 { margin: 6px 0 4px; font-size: 19px; line-height: 1.15; }
+  .meta { color: #6b7280; font-size: 10px; line-height: 1.45; }
+  .section { margin-top: 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 11px; }
   .label { color: #6b7280; }
   .value { font-weight: 600; text-align: right; }
-  .product { margin-top: 16px; border: 1px solid #eadfce; border-radius: 18px; background: linear-gradient(180deg, #fffdf8, #f7efe4); padding: 14px; }
-  .product-name { font-size: 18px; font-weight: 700; line-height: 1.2; }
-  .product-meta { margin-top: 6px; color: #7c6a58; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; }
-  .totals { margin-top: 16px; padding-top: 12px; border-top: 1px dashed #cfbfab; }
-  .total-strong { font-size: 18px; font-weight: 700; }
-  .thankyou { margin-top: 16px; text-align: center; padding-top: 12px; border-top: 1px dashed #cfbfab; }
+  .product { margin-top: 14px; border: 1px solid #e8dccd; border-radius: 14px; padding: 11px; background: linear-gradient(180deg, #fffdf9 0%, #f8f0e6 100%); }
+  .product-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
+  .product-meta { margin-top: 5px; color: #7b6857; font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .totals { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; }
+  .total-strong { font-size: 16px; font-weight: 700; }
+  .foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; text-align: center; }
+  .foot strong { display: block; margin-bottom: 4px; font-size: 11px; }
+  .foot small { color: #6b7280; font-size: 10px; line-height: 1.45; }
 </style>
 </head>
 <body>
   <main class="sheet">
     <header class="top">
+      ${logoMarkup}
       <div class="eyebrow">Ticket de venta</div>
       <h1>${branchLabel}</h1>
-      <div class="badge">Operacion confirmada</div>
+      ${ticketMeta ? `<div class="meta">${ticketMeta}</div>` : ""}
     </header>
 
     <section class="section">
       <div class="row"><span class="label">Venta</span><span class="value">${saleNumber}</span></div>
       <div class="row"><span class="label">Fecha y hora</span><span class="value">${escapeHtml(saleDateTime)}</span></div>
       <div class="row"><span class="label">Cajero</span><span class="value">${cashierLabel}</span></div>
-      <div class="row"><span class="label">Canal</span><span class="value">Mostrador</span></div>
+      <div class="row"><span class="label">Canal</span><span class="value">${channelLabel}</span></div>
     </section>
 
     <section class="product">
@@ -605,24 +607,26 @@ function App() {
       <div class="row"><span class="label">Items</span><span class="value">${formatInteger(sale.quantity)}</span></div>
     </section>
 
-    <footer class="thankyou">
-      <div>Gracias por su compra.</div>
-      <div class="foot">Conserve este comprobante para cambios o consultas.</div>
+    <footer class="foot">
+      <strong>Gracias por su compra</strong>
+      <small>Conserve este comprobante para cambios, consultas o control de caja.</small>
     </footer>
   </main>
 </body>
 </html>`;
 
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    const triggerPrint = () => {
-      printWindow.print();
-      printWindow.onafterprint = () => printWindow.close();
-    };
-    window.setTimeout(triggerPrint, 180);
-    return true;
-  }  async function applyTreasuryFilter(event) {
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  const triggerPrint = () => {
+    printWindow.print();
+    printWindow.onafterprint = () => printWindow.close();
+  };
+  window.setTimeout(triggerPrint, 180);
+  return true;
+}
+
+  async function applyTreasuryFilter(event) {
     event.preventDefault();
     setTreasuryPreset("custom");
     await refreshAll(treasuryFilter);
@@ -708,11 +712,11 @@ function App() {
                 <h2 className="auth-title mt-3 text-3xl font-semibold">Crear acceso local</h2>
                 <p className="auth-text mt-2 text-sm">Este ingreso solo protege la apertura del sistema en esta PC del local.</p>
               </div>
-              <ThemeToggle theme={theme} onChange={handleThemeChange} compact />
+              <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
               <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacen San Martin" />
-              <InputField label="Direccion comercial" name="businessAddress" value={accessSetupForm.businessAddress} onChange={handleText(setAccessSetupForm)} placeholder="Av. Principal 123, Ciudad" />
+              <InputField label="Dirección comercial" name="businessAddress" value={accessSetupForm.businessAddress} onChange={handleText(setAccessSetupForm)} placeholder="Av. Principal 123, Ciudad" />
               <InputField label="WhatsApp" name="businessWhatsapp" value={accessSetupForm.businessWhatsapp} onChange={handleText(setAccessSetupForm)} placeholder="+54 9 11 1234 5678" />
               <InputField label="CUIT" name="businessTaxId" value={accessSetupForm.businessTaxId} onChange={handleText(setAccessSetupForm)} placeholder="30-12345678-9" />
               <LogoUploadField label="Logo del comercio (opcional)" logoDataUrl={accessSetupForm.businessLogoDataUrl} onSelect={(event) => handleLogoUpload(event, setAccessSetupForm)} onClear={() => clearLogo(setAccessSetupForm)} />
@@ -751,7 +755,7 @@ function App() {
                 <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
                 <p className="auth-text mt-2 text-sm">Protección local para esta PC. No requiere Internet ni cuentas externas.</p>
               </div>
-              <ThemeToggle theme={theme} onChange={handleThemeChange} compact />
+              <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleLogin}>
               <InputField label="Usuario" name="userName" value={loginForm.userName} onChange={handleText(setLoginForm)} />
@@ -767,25 +771,36 @@ function App() {
   return (
     <main className="app-shell min-h-screen">
       {themeShiftOverlay}
-      <div className="dashboard-layout grid min-h-screen lg:grid-cols-[290px_minmax(0,1fr)]">
-        <aside className="sidebar-shell border-r px-5 py-6 lg:px-6">
-          <div>
-            <div className="brand-title text-3xl font-semibold">AppStock Local</div>
-            <div className="brand-subtitle mt-1 text-xs uppercase tracking-[0.24em]">Panel de control comercial</div>
+      <div className={`dashboard-layout grid min-h-screen ${sidebarCollapsed ? "lg:grid-cols-[104px_minmax(0,1fr)]" : "lg:grid-cols-[290px_minmax(0,1fr)]"}`}>
+        <aside className={`sidebar-shell border-r px-5 py-6 lg:px-6 ${sidebarCollapsed ? "sidebar-shell-collapsed" : ""}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className={sidebarCollapsed ? "sidebar-collapse-hidden" : ""}>
+              <div className="brand-title text-3xl font-semibold">AppStock Local</div>
+              <div className="brand-subtitle mt-1 text-xs uppercase tracking-[0.24em]">Panel de control comercial</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              className={`sidebar-toggle section-button section-button-idle rounded-2xl px-3 py-3 text-xs font-semibold transition ${sidebarCollapsed ? "sidebar-toggle-collapsed" : ""}`}
+              aria-label={sidebarCollapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+              title={sidebarCollapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+            >
+              <span aria-hidden="true">{sidebarCollapsed ? "»" : "«"}</span>
+            </button>
           </div>
           <div className="branch-card mt-8 rounded-[28px] p-5">
-            <div className="flex items-center gap-4">
+            <div className={`flex items-center gap-4 ${sidebarCollapsed ? "justify-center" : ""}`}>
               <div className="avatar-badge flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-semibold">{buildInitials(branchName)}</div>
-              <div>
+              <div className={sidebarCollapsed ? "sidebar-collapse-hidden" : ""}>
                 <div className="content-strong text-xl font-semibold">{branchName}</div>
                 <div className="content-muted text-sm">Estado operativo local</div>
               </div>
             </div>
           </div>
           <nav className="mt-8 space-y-2">
-            {navItems.map((item) => <SidebarLink key={item.id} item={item} active={activeSection === item.id} onClick={() => setActiveSection(item.id)} />)}
+            {navItems.map((item) => <SidebarLink key={item.id} item={item} active={activeSection === item.id} collapsed={sidebarCollapsed} onClick={() => setActiveSection(item.id)} />)}
           </nav>
-          <div className="soft-card mt-8 rounded-[28px] p-5">
+          <div className={`soft-card mt-8 rounded-[28px] p-5 ${sidebarCollapsed ? "sidebar-collapse-hidden" : ""}`}>
             <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen rápido</div>
             <div className="mt-4 space-y-4">
               <MiniLine label="Ventas del período" value={formatMoney(cashSummary.today_revenue)} />
@@ -794,7 +809,9 @@ function App() {
             </div>
           </div>
           <div className="mt-auto pt-8">
-            <button type="button" onClick={handleLogout} className="section-button section-button-idle w-full rounded-2xl px-4 py-3 text-sm font-semibold transition">Cerrar sesión local</button>
+            <button type="button" onClick={handleLogout} className={`section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition ${sidebarCollapsed ? "sidebar-logout-compact" : "w-full"}`} aria-label="Cerrar sesión local" title="Cerrar sesión local">
+              {sidebarCollapsed ? "CS" : "Cerrar sesión local"}
+            </button>
           </div>
         </aside>
 
@@ -807,7 +824,7 @@ function App() {
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
               <div className="flex flex-wrap items-center gap-3">
-                <ThemeToggle theme={theme} onChange={handleThemeChange} />
+                <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} />
                 <div className="date-pill rounded-2xl px-4 py-3 text-right">
                   <div className="panel-description text-[11px] uppercase tracking-[0.24em]">Fecha actual</div>
                   <div className="panel-title mt-1 text-sm font-semibold capitalize">{currentDateLabel}</div>
@@ -820,9 +837,9 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length, businessProfileForm, setBusinessProfileForm, handleBusinessProfileSave, handleLogoUpload, clearLogo, saving }) : null}
-            {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection }) : null}
-            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, treasuryPreset, treasuryMetric, setTreasuryMetric, applyTreasuryPreset, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales }) : null}
+            {activeSection === "home" ? <HomeSection reports={reports} cashSummary={cashSummary} inventoryValue={inventoryValue} costValue={costValue} lowStockItems={lowStockItems} latestMovements={latestMovements} branchName={branchName} loading={loading} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} topProduct={reports.top_products[0]} /> : null}
+            {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
+            {activeSection === "treasury" ? <TreasurySection cashSummary={cashSummary} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} saleForm={saleForm} setSaleForm={setSaleForm} submitSale={submitSale} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : null}
           </section>
         </div>
       </div>
@@ -830,228 +847,6 @@ function App() {
   );
 }
 
-function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories, totalItems, businessProfileForm, setBusinessProfileForm, handleBusinessProfileSave, handleLogoUpload, clearLogo, saving }) {
-  const topProduct = reports.top_products[0];
-  const needsOnboarding = totalCategories === 0 || totalItems === 0;
-  return (
-    <div className="space-y-6">
-      {needsOnboarding ? <Panel title="Primeros pasos" description="Dejá el sistema listo para operar desde esta misma pantalla."><div className="onboarding-grid grid gap-4 lg:grid-cols-3"><QuickAction title="Cargar categorías" description={totalCategories === 0 ? "Creá la primera categoría para ordenar el catálogo." : totalCategories + " categorías disponibles para reutilizar."} onClick={() => setActiveSection("inventory")} emphasis={totalCategories === 0} /><QuickAction title="Cargar productos" description={totalItems === 0 ? "Empezá con el primer producto del local." : totalItems + " productos listos para vender o reponer."} onClick={() => setActiveSection("inventory")} emphasis={totalItems === 0} /><QuickAction title="Abrir caja diaria" description={cashSummary.current_session ? "La caja ya está abierta y operativa." : "Activá el turno para registrar ventas y cierres."} onClick={() => setActiveSection("treasury")} emphasis={!cashSummary.current_session} /></div></Panel> : null}
-      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <Panel title={`Bienvenido a ${branchName}`} description="Tu punto de entrada para revisar el estado general del negocio, la caja y el inventario del local.">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Recaudación" value={formatMoney(reports.total_revenue)} />
-            <MetricCard label="Ganancia" value={formatMoney(reports.total_profit)} />
-            <MetricCard label="Valor de inventario" value={formatMoney(inventoryValue)} />
-            <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <QuickAction title="Ir a Inventario" description="Altas, edición, escáner y stock." onClick={() => setActiveSection("inventory")} />
-            <QuickAction title="Abrir Tesorería" description="Caja diaria, ventas y reportes." onClick={() => setActiveSection("treasury")} />
-            <QuickAction title="Ver alertas" description={`${lowStockItems.length} productos en reposición.`} onClick={() => setActiveSection("inventory")} emphasis={lowStockItems.length > 0} />
-          </div>
-        </Panel>
-        <Panel title="Estado operativo" description="Resumen inmediato del local y del turno actual.">
-          <div className="space-y-4">
-            <StatusRow label="Caja" value={cashSummary.current_session ? "Abierta" : "Cerrada"} strong={Boolean(cashSummary.current_session)} />
-            <StatusRow label="Ventas del día" value={cashSummary.today_sales_count} />
-            <StatusRow label="Unidades vendidas" value={cashSummary.today_units_sold} />
-            <StatusRow label="Costo inmovilizado" value={formatMoney(costValue)} />
-          </div>
-        </Panel>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="Actividad reciente" description="Últimos movimientos relevantes del sistema local.">
-          {loading ? <EmptyState>Cargando actividad…</EmptyState> : latestMovements.length === 0 ? <EmptyState>Todavía no hay actividad registrada.</EmptyState> : <div className="space-y-3">{latestMovements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}
-        </Panel>
-        <Panel title="Inteligencia comercial" description="Lectura rápida para decidir qué mirar primero.">
-          <div className="space-y-4">
-            <InsightCard title="Producto líder" value={topProduct ? topProduct.name : "Sin ventas todavía"} helper={topProduct ? `${topProduct.quantity} unidades vendidas` : "Registrá ventas para ver tendencias."} />
-            <InsightCard title="Productos con stock bajo" value={lowStockItems.length} helper={lowStockItems.length > 0 ? "Conviene revisar compras o reposición." : "Sin alertas críticas por ahora."} />
-            <InsightCard title="Margen estimado" value={formatMoney(reports.total_profit)} helper="Calculado sobre ventas registradas y costo cargado." />
-          </div>
-        </Panel>
-      </section>
-
-      <Panel title="Perfil comercial" description="Estos datos alimentan el ticket termico y dejan la aplicacion lista para cualquier comercio.">
-        <form className="grid gap-4 md:grid-cols-2" onSubmit={handleBusinessProfileSave}>
-          <InputField label="Nombre del local" name="businessName" value={businessProfileForm.businessName} onChange={handleText(setBusinessProfileForm)} />
-          <InputField label="Direccion comercial" name="businessAddress" value={businessProfileForm.businessAddress} onChange={handleText(setBusinessProfileForm)} />
-          <InputField label="WhatsApp" name="businessWhatsapp" value={businessProfileForm.businessWhatsapp} onChange={handleText(setBusinessProfileForm)} />
-          <InputField label="CUIT" name="businessTaxId" value={businessProfileForm.businessTaxId} onChange={handleText(setBusinessProfileForm)} />
-          <div className="md:col-span-2">
-            <LogoUploadField label="Logo del comercio (opcional)" logoDataUrl={businessProfileForm.businessLogoDataUrl} onSelect={(event) => handleLogoUpload(event, setBusinessProfileForm)} onClear={() => clearLogo(setBusinessProfileForm)} />
-          </div>
-          <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">Guardar perfil comercial</button>
-        </form>
-      </Panel>
-    </div>
-  );
-}
-function renderInventorySection(props) {
-  const { loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection } = props;
-  const needsSetup = categories.length === 0 || filteredItems.length === 0;
-  const stockCoverage = filteredItems.length === 0 ? 0 : Math.max(0, Math.round(((filteredItems.length - lowStockItems.length) / filteredItems.length) * 100));
-  return (
-    <div className="space-y-6">
-      {needsSetup ? <Panel title="Inventario listo para despegar" description="Una ayuda breve para dejar operativo el catálogo en pocos minutos."><div className="onboarding-grid grid gap-4 lg:grid-cols-3"><QuickAction title="Crear categorías" description={categories.length === 0 ? "Definí rubros como almacén, bebidas o limpieza." : "Sumá nuevas categorías cuando el negocio crezca."} onClick={() => document.getElementById("new-category-input")?.focus()} emphasis={categories.length === 0} /><QuickAction title="Agregar producto manualmente" description="Usá el formulario para cargar nombre, código, costo y precio." onClick={() => document.getElementById("product-code-input")?.focus()} emphasis={filteredItems.length === 0} /><QuickAction title="Ir a tesorería" description="Cuando ya tengas productos, abrí caja y empezá a registrar ventas." onClick={() => setActiveSection("treasury")} /></div></Panel> : null}
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Panel title="Buscador y escáner" description="Buscá productos, registrá ingresos y mantené el foco listo para el lector de códigos.">
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4">
-              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, código o categoría</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar producto…" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label><ShortcutHint>Presioná <strong>F2</strong> para saltar al lector desde cualquier sección.</ShortcutHint>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]"><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Actualizar datos</button><SummaryBadge label="Valor inventario" value={formatMoney(inventoryValue)} /></div>
-            </div>
-            <div className="card-surface rounded-[28px] p-5">
-              <div className="flex items-center justify-between gap-3"><h3 className="panel-title text-lg font-semibold">Ingreso por escáner</h3><ScannerStatus state={scanState} /></div>
-              <form className="mt-4 space-y-4" onSubmit={submitScan}>
-                <InputField ref={scanInputRef} label="Código escaneado" id="product-code-input" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escaneá o escribí el código" autoComplete="off" />
-                <InputField label="Cantidad a ingresar" name="scanAmount" type="number" min="1" value={scanAmount} onChange={(event) => setScanAmount(event.target.value)} />
-                <button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar ingreso</button>
-              </form>
-              {scanCandidate ? <div className="warning-box mt-4 rounded-2xl px-4 py-3 text-sm">Código nuevo detectado. Completá el alta rápida para guardarlo.</div> : null}
-            </div>
-          </div>
-        </Panel>
-        <Panel title={editingId ? "Editar producto" : "Nuevo producto"} description="Alta manual, edición y carga de categorías sin salir del panel principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={submitProduct}>
-            <InputField label="Código de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
-            <InputField label="Nombre del producto" name="name" value={productForm.name} onChange={handleText(setProductForm)} />
-            <CategorySelect label="Categoría" value={productForm.category} categories={categories} onChange={(value) => setProductForm((current) => ({ ...current, category: value }))} />
-            <InputField label="Stock actual" name="quantity" type="number" min="0" value={productForm.quantity} onChange={handleText(setProductForm)} />
-            <InputField label="Stock mínimo" name="min_quantity" type="number" min="0" value={productForm.min_quantity} onChange={handleText(setProductForm)} />
-            <InputField label="Precio de venta" name="sale_price" type="number" min="0" step="0.01" value={productForm.sale_price} onChange={handleText(setProductForm)} />
-            <InputField label="Costo" name="cost_price" type="number" min="0" step="0.01" value={productForm.cost_price} onChange={handleText(setProductForm)} />
-            <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
-          </form>
-          <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
-            <input id="new-category-input" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Creá la primera categoría del local" : "Agregar nueva categoría"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
-            <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Guardar categoría</button>
-          </form>
-        </Panel>
-      </section>
-      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="Cat?logo de productos" description="Visualiz? inventario, edit? datos, busc? r?pido y elimin? productos obsoletos." action={<div className="flex flex-wrap gap-2"><SummaryBadge label="Productos visibles" value={filteredItems.length} /><SummaryBadge label="Cobertura sana" value={`${stockCoverage}%`} /></div>}>{loading ? <EmptyState>Cargando inventario?</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}</Panel>
-        <div className="space-y-6">
-          <Panel title="Estado de stock" description="Una vista r?pida para priorizar la reposici?n."><div className="grid gap-4 sm:grid-cols-2"><MetricCard label="Categor?as" value={categories.length} /><MetricCard label="Stock bajo" value={lowStockItems.length} emphasis={lowStockItems.length > 0} /></div><div className="inventory-health mt-5 rounded-[24px] p-4"><div className="flex items-center justify-between gap-3"><div><div className="panel-description text-xs uppercase tracking-[0.22em]">Salud del inventario</div><div className="content-strong mt-1 text-lg font-semibold">{stockCoverage}% de productos por encima del m?nimo</div></div><div className="health-pill rounded-full px-3 py-2 text-xs font-semibold">{lowStockItems.length === 0 ? "Sin alertas" : `${lowStockItems.length} con alerta`}</div></div><div className="progress-track mt-4 h-3 overflow-hidden rounded-full"><div className="progress-bar h-full rounded-full" style={{ width: `${stockCoverage}%` }} /></div></div></Panel>
-          <Panel title="Últimos movimientos" description="Entradas, ventas y ajustes más recientes del inventario.">{movements.length === 0 ? <EmptyState>Todavía no hay movimientos registrados.</EmptyState> : <div className="space-y-3">{movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}</Panel>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function renderTreasurySection(props) {
-  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, treasuryPreset, treasuryMetric, setTreasuryMetric, applyTreasuryPreset, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales } = props;
-  return (
-    <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Panel title="Control de caja" description="Abrí o cerrá el turno, registrá ventas y seguí el balance del día en tiempo real.">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ActionCard title="Abrir caja" description="Iniciá el turno con el saldo base verificado."><form className="space-y-3" onSubmit={submitCashOpen}><InputField label="Monto inicial" name="opening_amount" type="number" min="0" step="0.01" value={cashOpenForm.opening_amount} onChange={handleText(setCashOpenForm)} /><InputField label="Observaciones de apertura" name="notes" value={cashOpenForm.notes} onChange={handleText(setCashOpenForm)} /><button type="submit" disabled={saving || Boolean(cashSummary.current_session)} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Abrir caja</button></form></ActionCard>
-            <ActionCard title="Cerrar caja" description="Finalizá el turno y registrá el monto real del cierre." subtle><form className="space-y-3" onSubmit={submitCashClose}><InputField label="Monto real al cierre" name="actual_cash_amount" type="number" min="0" step="0.01" value={cashCloseForm.actual_cash_amount} onChange={handleText(setCashCloseForm)} /><InputField label="Observaciones de cierre" name="notes" value={cashCloseForm.notes} onChange={handleText(setCashCloseForm)} /><button type="submit" disabled={saving || !cashSummary.current_session} className="secondary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Cerrar caja</button></form></ActionCard>
-          </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} /><MetricCard label="Recaudación" value={formatMoney(cashSummary.today_revenue)} /><MetricCard label="Ganancia" value={formatMoney(cashSummary.today_profit)} /><MetricCard label="Ventas del período" value={cashSummary.today_sales_count} /></div>
-        </Panel>
-        <Panel title="Registrar venta" description="Impacta stock, recaudación y margen estimado automáticamente."><form className="space-y-4" onSubmit={submitSale}><InputField label="Código de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} /><InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} /><InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} /><button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar venta</button></form></Panel>
-      </section>
-      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-        <Panel title="Pulso diario de ventas" description="Compará la evolución diaria de la métrica clave dentro del período actual." action={<div className="flex flex-col gap-3"><div className="range-chip-group flex flex-wrap gap-2">{[{ id: "7d", label: "7 días" }, { id: "30d", label: "30 días" }, { id: "month", label: "Mes actual" }, { id: "all", label: "Todo" }].map((preset) => <button key={preset.id} type="button" onClick={() => applyTreasuryPreset(preset.id)} className={`rounded-full px-4 py-2 text-xs font-semibold transition ${treasuryPreset === preset.id ? "section-button section-button-active" : "section-button section-button-idle"}`}>{preset.label}</button>)}</div><div className="metric-chip-group flex flex-wrap gap-2">{[{ id: "revenue", label: "Recaudación" }, { id: "profit", label: "Ganancia" }, { id: "units_sold", label: "Unidades" }].map((metric) => <button key={metric.id} type="button" onClick={() => setTreasuryMetric(metric.id)} className={`rounded-full px-4 py-2 text-xs font-semibold transition ${treasuryMetric === metric.id ? "section-button section-button-active" : "section-button section-button-idle"}`}>{metric.label}</button>)}</div></div>}>
-          {dailySales.length === 0 ? <EmptyState>Todavía no hay suficientes ventas para dibujar el gráfico diario.</EmptyState> : <DailySalesChart rows={dailySales} metric={treasuryMetric} />}
-        </Panel>
-        <Panel title="Resumen ejecutivo" description="Indicadores rápidos para tomar decisiones sin salir de tesorería."><div className="treasury-summary-grid grid gap-4 sm:grid-cols-2"><InsightCard title="Ticket promedio" value={cashSummary.today_sales_count > 0 ? formatMoney(cashSummary.today_revenue / cashSummary.today_sales_count) : formatMoney(0)} helper="Promedio de venta registrado en el período visible." /><InsightCard title="Margen estimado" value={cashSummary.today_revenue > 0 ? `${Math.round((cashSummary.today_profit / cashSummary.today_revenue) * 100)}%` : "0%"} helper="Basado en recaudación y costo declarado." /><InsightCard title="Caja actual" value={cashSummary.current_session ? "Abierta" : "Cerrada"} helper={cashSummary.current_session ? "Hay un turno operativo en curso." : "No hay turno activo en este momento."} /><InsightCard title="Ventas registradas" value={cashSummary.today_sales_count} helper={`${cashSummary.today_units_sold} unidades vendidas en el período.`} /></div></Panel>
-      </section>
-      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-6">
-          <Panel title="Período de análisis" description="Filtrá tesorería por rango de fechas para revisar cierres y ventas." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={exportTreasuryCsv} disabled={saving} className="section-button section-button-active rounded-full px-4 py-2 text-sm font-semibold transition">Descargar CSV</button><button type="button" onClick={printTreasurySummary} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-semibold transition">Imprimir resumen</button></div>}><form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}><InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} /><InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} /><button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Aplicar filtro</button><button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button></form>{treasuryFilterActive ? <div className="info-box mt-4 rounded-2xl px-4 py-3 text-sm">Mostrando tesorería desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}</Panel>
-          <Panel title="Jornadas registradas" description={treasuryFilterActive ? "Cierres y aperturas del período filtrado." : "Últimos cierres y turnos de caja registrados."}>{cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese período.</EmptyState> : <div className="space-y-3">{cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}</div>}</Panel>
-        </div>
-        <div className="space-y-6">
-          <Panel title="Reportes inteligentes" description="Lectura rápida de recaudación, ganancia y comportamiento de ventas.">
-            <div className="grid gap-4 lg:grid-cols-2"><ReportList title="Productos más vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} unidades · ${formatMoney(row.revenue)}`} /><ReportList title="Categorías más vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} unidades · ${formatMoney(row.revenue)}`} /></div>
-            <div className="soft-card mt-5 rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3><div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavía.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="success-soft rounded-2xl px-4 py-3 text-sm">{insight}</div>)}</div></div>
-            <div className="mt-5"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Últimas ventas del período</h3><div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese período.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div></div>
-          </Panel>
-        </div>
-      </section>
-    </div>
-  );
-}
-function createEmptyReports() { return { total_products: 0, total_units: 0, low_stock_count: 0, inventory_cost_value: 0, inventory_sale_value: 0, total_revenue: 0, total_profit: 0, total_sales_count: 0, total_units_sold: 0, top_products: [], top_categories: [], recent_sales: [], insights: [] }; }
-function createEmptyCashSummary() { return { current_session: null, today_revenue: 0, today_profit: 0, today_sales_count: 0, today_units_sold: 0, expected_cash_now: 0, recent_sessions: [] }; }
-function normalizeProductForm(form) { return { code: String(form.code).trim(), name: String(form.name).trim(), category: String(form.category).trim() || "General", quantity: Number(form.quantity), min_quantity: Number(form.min_quantity), sale_price: Number(form.sale_price), cost_price: Number(form.cost_price) }; }
-function formatMoney(value) { return money.format(Number(value || 0)); }
-function formatInteger(value) { return integer.format(Number(value || 0)); }
-function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }
-function formatDateTime(value) { const parsed = parseAppDateTime(value); return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("es-AR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); }
-function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
-function buildTreasuryPresetFilter(preset) { const today = new Date(); const endDate = toDateInputValue(today); if (preset === "all") return { ...emptyTreasuryFilter }; if (preset === "month") return { startDate: toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), endDate }; const days = preset === "30d" ? 29 : 6; const start = new Date(today); start.setDate(today.getDate() - days); return { startDate: toDateInputValue(start), endDate }; }
-function toDateInputValue(value) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 10); }
-function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
-function readLocalJson(key) { try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } }
-function buildBusinessProfileForm(config) { return { businessName: config?.businessName || "", businessAddress: config?.businessAddress || "", businessWhatsapp: config?.businessWhatsapp || "", businessTaxId: config?.businessTaxId || "", businessLogoDataUrl: config?.businessLogoDataUrl || "" }; }
-function parseAppDateTime(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return new Date(NaN);
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)) return new Date(raw.replace(" ", "T") + "Z");
-  return new Date(raw);
-}
-function buildInitials(value) { return String(value).split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "AL"; }
-function sectionEyebrow(section) { return ({ home: "Visión general", inventory: "Gestión de inventario", treasury: "Finanzas y operaciones" })[section] ?? "Sistema local"; }
-function sectionTitle(section, branchName) { return ({ home: `Bienvenido, ${branchName}`, inventory: "Gestión de inventario", treasury: "Control de caja y reportes" })[section] ?? branchName; }
-function sectionDescription(section) { return ({ home: "Un inicio claro para revisar caja, inventario y alertas del local.", inventory: "Control total sobre existencias, costos, márgenes y altas por escáner.", treasury: "Seguimiento de caja diaria, ventas, cierres y reportes exportables." })[section] ?? "Panel principal"; }
-function handleText(setter) { return (event) => { const { name, value } = event.target; setter((current) => ({ ...current, [name]: value })); }; }
-function normalizeText(value) { return String(value || "").normalize("NFD").replace(/[^\S\r\n]+/g, " ").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase(); }
-
-function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[30px] p-5 shadow-panel backdrop-blur"><div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description mt-1 text-sm">{description}</p></div>{action}</div>{children}</article>; }
-function ThemeToggle({ theme, onChange }) {
-  return (
-    <div className="theme-toggle inline-flex items-center gap-2 rounded-full px-2 py-2">
-      {Object.entries(availableThemes).map(([value, config]) => (
-        <button key={value} type="button" onClick={(event) => onChange(value, event)} className={`theme-pill rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${theme === value ? "theme-pill-active" : "theme-pill-idle"}`}>
-          <span className="theme-pill-label">{config.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-function LogoUploadField({ label, logoDataUrl, onSelect, onClear }) {
-  return <div><span className="field-label mb-2 block text-sm font-medium">{label}</span><label className="field-input flex cursor-pointer items-center justify-center rounded-2xl border-dashed px-4 py-4 text-center text-sm"><input type="file" accept="image/*" className="hidden" onChange={onSelect} /><span>{logoDataUrl ? "Reemplazar logo" : "Seleccionar imagen"}</span></label>{logoDataUrl ? <div className="soft-card mt-3 flex items-center justify-between gap-4 rounded-2xl p-3"><img src={logoDataUrl} alt="Logo comercio" className="h-14 w-14 rounded-xl object-contain" /><button type="button" onClick={onClear} className="section-button section-button-idle rounded-full px-3 py-2 text-xs font-semibold transition">Quitar logo</button></div> : <div className="panel-description mt-2 text-xs">Opcional. Se guarda localmente y se usa en el ticket.</div>}</div>;
-}
-function SidebarLink({ item, active, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"}`}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span>{item.label}</span></button>; }
-function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
-function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`status-panel mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "status-panel-error" : "status-panel-success"}`}>{error || message}</div>; }
-function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "success-soft text-emerald-100" }, processing: { label: "Procesando lectura", className: "info-box text-sky-100" }, success: { label: "Lectura confirmada", className: "success-soft text-emerald-100" }, warning: { label: "Código nuevo", className: "warning-box text-amber-100" }, error: { label: "Revisar lectura", className: "danger-box text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "warning-box text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${current.className}`}>{current.label}</div>; }
-function EmptyState({ children }) { return <div className="empty-state rounded-2xl border border-dashed px-4 py-10 text-center text-sm">{children}</div>; }
-function CategorySelect({ label, value, categories, onChange }) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition">{categories.length === 0 ? <option value="General">General</option> : categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>; }
-const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><input ref={ref} {...props} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>; });
-function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Código</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="rounded-l-2xl px-3 py-3"><div className="content-strong font-medium">{item.name}</div><div className="content-muted text-xs">{item.category}</div></td><td className="inventory-code px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{item.quantity} / mínimo {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="section-button section-button-idle rounded-full px-3 py-1 text-xs font-medium transition">Editar</button><button type="button" onClick={() => onDelete(item)} className="danger-button rounded-full px-3 py-1 text-xs font-medium transition">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
-function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} · {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
-function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Esperado</span><span className="content-strong mt-1 block font-medium">{formatMoney(session.expected_cash_amount)}</span></div><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Real / cierre</span><span className="content-strong mt-1 block font-medium">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="soft-card content-default mt-4 rounded-2xl px-4 py-3 text-sm">{session.notes}</div> : null}</div>; }
-function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="soft-card rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="card-surface rounded-2xl px-4 py-3"><div className="content-strong font-medium">{renderLabel(row)}</div><div className="content-muted text-sm">{renderMeta(row)}</div></div>)}</div></div>; }
-function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} · {sale.category}</div></div><div className="text-right"><div className="content-strong font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} unidades</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
-function FeatureCard({ title, description }) { return <div className="feature-card rounded-2xl p-5"><div className="content-strong text-lg font-semibold">{title}</div><div className="auth-text mt-2 text-sm">{description}</div></div>; }
-function MiniStat({ label, value }) { return <div className="feature-card rounded-2xl p-5"><div className="panel-description text-xs uppercase tracking-[0.24em]">{label}</div><div className="content-strong mt-3 text-2xl font-semibold">{value}</div></div>; }
-function QuickAction({ title, description, onClick, emphasis = false }) { return <button type="button" onClick={onClick} className={`quick-action rounded-2xl p-5 text-left transition ${emphasis ? "quick-action-emphasis" : "quick-action-default"}`}><div className="content-strong text-lg font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div></button>; }
-function StatusRow({ label, value, strong = false }) { return <div className="soft-card flex items-center justify-between rounded-2xl px-4 py-3"><span className="panel-description text-sm">{label}</span><span className={`text-sm font-semibold ${strong ? "content-strong" : "content-default"}`}>{value}</span></div>; }
-function ShortcutHint({ children }) { return <div className="shortcut-hint rounded-2xl px-4 py-3 text-sm">{children}</div>; }
-function InsightCard({ title, value, helper }) { return <div className="soft-card rounded-2xl p-4"><div className="panel-description text-xs uppercase tracking-[0.2em]">{title}</div><div className="content-strong mt-2 text-xl font-semibold">{value}</div><div className="content-muted mt-2 text-sm">{helper}</div></div>; }
-function SummaryBadge({ label, value }) { return <div className="soft-card rounded-2xl px-4 py-3 text-right"><div className="panel-description text-[11px] uppercase tracking-[0.22em]">{label}</div><div className="content-strong mt-1 text-sm font-semibold">{value}</div></div>; }
-function MiniLine({ label, value }) { return <div className="flex items-center justify-between gap-3"><span className="panel-description text-sm">{label}</span><span className="content-strong text-sm font-semibold">{value}</span></div>; }
-function ActionCard({ title, description, subtle = false, children }) { return <div className={`action-card rounded-[28px] p-5 ${subtle ? "action-card-light" : "action-card-strong"}`}><div className="content-strong text-3xl font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div><div className="mt-5">{children}</div></div>; }
-
-function getDailySalesMetricConfig(metric) {
-  if (metric === "profit") return { key: "profit", label: "Ganancia", format: formatMoney };
-  if (metric === "units_sold") return { key: "units_sold", label: "Unidades vendidas", format: formatInteger };
-  return { key: "revenue", label: "Recaudación", format: formatMoney };
-}
-
-function DailySalesChart({ rows, metric = "revenue" }) {
-  const config = getDailySalesMetricConfig(metric);
-  const values = rows.map((row) => Number(row[config.key] || 0));
-  const maxValue = Math.max(...values, 1);
-  return <div className="daily-sales-chart"><div className="chart-grid">{rows.map((row) => { const currentValue = Number(row[config.key] || 0); return <div key={row.label} className="chart-column"><div className="chart-meta text-xs">{config.format(currentValue)}</div><div className="chart-bar-wrap"><div className="chart-bar" style={{ height: `${Math.max((currentValue / maxValue) * 100, 8)}%` }} title={`${config.label}: ${config.format(currentValue)}`} /></div><div className="chart-label text-xs">{row.label}</div><div className="chart-foot text-[11px]">{row.sales_count} ventas</div></div>; })}</div></div>;
-}
 export default App;
 
 
