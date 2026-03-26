@@ -1,0 +1,92 @@
+from sqlite3 import IntegrityError
+
+from fastapi import APIRouter, HTTPException, Response, status
+
+from ..models import SaleCreate, SaleRecord, StockAdjustment, StockItem, StockItemCreate, StockItemUpdate
+from ..repository import repository
+
+
+router = APIRouter(tags=["items"])
+
+
+@router.get("/items", response_model=list[StockItem])
+def list_items() -> list[StockItem]:
+    return repository.list_items()
+
+
+@router.get("/items/{item_id}", response_model=StockItem)
+def get_item(item_id: int) -> StockItem:
+    item = repository.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+    return item
+
+
+@router.get("/items/code/{code}", response_model=StockItem)
+def get_item_by_code(code: str) -> StockItem:
+    item = repository.get_by_code(code)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+    return item
+
+
+@router.post("/items", response_model=StockItem, status_code=status.HTTP_201_CREATED)
+def create_item(payload: StockItemCreate) -> StockItem:
+    if repository.get_by_code(payload.code):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe un producto con ese codigo.",
+        )
+
+    return repository.create_item(payload)
+
+
+@router.put("/items/{item_id}", response_model=StockItem)
+def update_item(item_id: int, payload: StockItemUpdate) -> StockItem:
+    existing = repository.get_by_code(payload.code)
+    if existing is not None and existing.id != item_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe otro producto con ese codigo.",
+        )
+
+    try:
+        item = repository.update_item(item_id, payload)
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se pudo actualizar el producto por un conflicto de codigo.",
+        ) from exc
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+    return item
+
+
+@router.delete("/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_item(item_id: int) -> Response:
+    deleted = repository.delete_item(item_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/items/{code}/scan", response_model=StockItem)
+def scan_item(code: str, payload: StockAdjustment) -> StockItem:
+    item = repository.increase_stock(code, payload.amount)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Producto no encontrado para el codigo escaneado.",
+        )
+
+    return item
+
+
+@router.post("/sales", response_model=SaleRecord, status_code=status.HTTP_201_CREATED)
+def create_sale(payload: SaleCreate) -> SaleRecord:
+    try:
+        sale, _item = repository.record_sale(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return sale

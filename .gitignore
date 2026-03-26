@@ -1,0 +1,11 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/*.pyc
+
+# SQLite data
+backend/data/
+
+# Node
+frontend/node_modules/
+frontend/dist/
