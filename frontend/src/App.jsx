@@ -18,6 +18,7 @@ const navItems = [
 const scanLockMs = 1200;
 const accessStorageKey = "appstock-local-access";
 const sessionStorageKey = "appstock-session-open";
+const activeSectionStorageKey = "appstock-active-section";
 
 function App() {
   const [items, setItems] = useState([]);
@@ -61,6 +62,8 @@ function App() {
       setLoginForm((current) => ({ ...current, userName: savedAccess.userName }));
     }
     if (window.localStorage.getItem(sessionStorageKey) === "open") setSessionOpen(true);
+    const savedSection = window.localStorage.getItem(activeSectionStorageKey);
+    if (savedSection && navItems.some((item) => item.id === savedSection)) setActiveSection(savedSection);
   }, []);
 
   useEffect(() => {
@@ -68,6 +71,23 @@ function App() {
     document.body.dataset.theme = theme;
     window.localStorage.setItem("appstock-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem(activeSectionStorageKey, activeSection);
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (!sessionOpen) return undefined;
+    function handleShortcut(event) {
+      if (event.key !== "F2") return;
+      event.preventDefault();
+      setActiveSection("inventory");
+      setMessage("Escáner listo para recibir un código.");
+      window.setTimeout(() => focusScanner(), 30);
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [sessionOpen, activeSection]);
 
   useEffect(() => {
     if (!sessionOpen || activeSection !== "inventory") return undefined;
@@ -588,8 +608,8 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection }) : null}
-            {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems }) : null}
+            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length }) : null}
+            {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection }) : null}
             {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports }) : null}
           </section>
         </div>
@@ -598,10 +618,12 @@ function App() {
   );
 }
 
-function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection }) {
+function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories, totalItems }) {
   const topProduct = reports.top_products[0];
+  const needsOnboarding = totalCategories === 0 || totalItems === 0;
   return (
     <div className="space-y-6">
+      {needsOnboarding ? <Panel title="Primeros pasos" description="Dejá el sistema listo para operar desde esta misma pantalla."><div className="onboarding-grid grid gap-4 lg:grid-cols-3"><QuickAction title="Cargar categorías" description={totalCategories === 0 ? "Creá la primera categoría para ordenar el catálogo." : totalCategories + " categorías disponibles para reutilizar."} onClick={() => setActiveSection("inventory")} emphasis={totalCategories === 0} /><QuickAction title="Cargar productos" description={totalItems === 0 ? "Empezá con el primer producto del local." : totalItems + " productos listos para vender o reponer."} onClick={() => setActiveSection("inventory")} emphasis={totalItems === 0} /><QuickAction title="Abrir caja diaria" description={cashSummary.current_session ? "La caja ya está abierta y operativa." : "Activá el turno para registrar ventas y cierres."} onClick={() => setActiveSection("treasury")} emphasis={!cashSummary.current_session} /></div></Panel> : null}
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <Panel title={`Bienvenido a ${branchName}`} description="Tu punto de entrada para revisar el estado general del negocio, la caja y el inventario del local.">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -642,20 +664,22 @@ function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lo
   );
 }
 function renderInventorySection(props) {
-  const { loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems } = props;
+  const { loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection } = props;
+  const needsSetup = categories.length === 0 || filteredItems.length === 0;
   return (
     <div className="space-y-6">
+      {needsSetup ? <Panel title="Inventario listo para despegar" description="Una ayuda breve para dejar operativo el catálogo en pocos minutos."><div className="onboarding-grid grid gap-4 lg:grid-cols-3"><QuickAction title="Crear categorías" description={categories.length === 0 ? "Definí rubros como almacén, bebidas o limpieza." : "Sumá nuevas categorías cuando el negocio crezca."} onClick={() => document.getElementById("new-category-input")?.focus()} emphasis={categories.length === 0} /><QuickAction title="Agregar producto manualmente" description="Usá el formulario para cargar nombre, código, costo y precio." onClick={() => document.getElementById("product-code-input")?.focus()} emphasis={filteredItems.length === 0} /><QuickAction title="Ir a tesorería" description="Cuando ya tengas productos, abrí caja y empezá a registrar ventas." onClick={() => setActiveSection("treasury")} /></div></Panel> : null}
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <Panel title="Buscador y escáner" description="Buscá productos, registrá ingresos y mantené el foco listo para el lector de códigos.">
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-4">
-              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, código o categoría</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar producto…" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>
+              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, código o categoría</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar producto…" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label><ShortcutHint>Presioná <strong>F2</strong> para saltar al lector desde cualquier sección.</ShortcutHint>
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]"><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Actualizar datos</button><SummaryBadge label="Valor inventario" value={formatMoney(inventoryValue)} /></div>
             </div>
             <div className="card-surface rounded-[28px] p-5">
               <div className="flex items-center justify-between gap-3"><h3 className="panel-title text-lg font-semibold">Ingreso por escáner</h3><ScannerStatus state={scanState} /></div>
               <form className="mt-4 space-y-4" onSubmit={submitScan}>
-                <InputField ref={scanInputRef} label="Código escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escaneá o escribí el código" autoComplete="off" />
+                <InputField ref={scanInputRef} label="Código escaneado" id="product-code-input" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escaneá o escribí el código" autoComplete="off" />
                 <InputField label="Cantidad a ingresar" name="scanAmount" type="number" min="1" value={scanAmount} onChange={(event) => setScanAmount(event.target.value)} />
                 <button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar ingreso</button>
               </form>
@@ -675,7 +699,7 @@ function renderInventorySection(props) {
             <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
           </form>
           <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
-            <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Creá la primera categoría del local" : "Agregar nueva categoría"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
+            <input id="new-category-input" value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Creá la primera categoría del local" : "Agregar nueva categoría"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
             <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Guardar categoría</button>
           </form>
         </Panel>
@@ -754,6 +778,7 @@ function FeatureCard({ title, description }) { return <div className="feature-ca
 function MiniStat({ label, value }) { return <div className="feature-card rounded-2xl p-5"><div className="panel-description text-xs uppercase tracking-[0.24em]">{label}</div><div className="content-strong mt-3 text-2xl font-semibold">{value}</div></div>; }
 function QuickAction({ title, description, onClick, emphasis = false }) { return <button type="button" onClick={onClick} className={`quick-action rounded-2xl p-5 text-left transition ${emphasis ? "quick-action-emphasis" : "quick-action-default"}`}><div className="content-strong text-lg font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div></button>; }
 function StatusRow({ label, value, strong = false }) { return <div className="soft-card flex items-center justify-between rounded-2xl px-4 py-3"><span className="panel-description text-sm">{label}</span><span className={`text-sm font-semibold ${strong ? "content-strong" : "content-default"}`}>{value}</span></div>; }
+function ShortcutHint({ children }) { return <div className="shortcut-hint rounded-2xl px-4 py-3 text-sm">{children}</div>; }
 function InsightCard({ title, value, helper }) { return <div className="soft-card rounded-2xl p-4"><div className="panel-description text-xs uppercase tracking-[0.2em]">{title}</div><div className="content-strong mt-2 text-xl font-semibold">{value}</div><div className="content-muted mt-2 text-sm">{helper}</div></div>; }
 function SummaryBadge({ label, value }) { return <div className="soft-card rounded-2xl px-4 py-3 text-right"><div className="panel-description text-[11px] uppercase tracking-[0.22em]">{label}</div><div className="content-strong mt-1 text-sm font-semibold">{value}</div></div>; }
 function MiniLine({ label, value }) { return <div className="flex items-center justify-between gap-3"><span className="panel-description text-sm">{label}</span><span className="content-strong text-sm font-semibold">{value}</span></div>; }
