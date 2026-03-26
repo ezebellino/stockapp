@@ -8,6 +8,7 @@ const emptySaleForm = { code: "", amount: 1, unit_price: "" };
 function App() {
   const [items, setItems] = useState([]);
   const [reports, setReports] = useState(createEmptyReports());
+  const [movements, setMovements] = useState([]);
   const [activeSection, setActiveSection] = useState("inventory");
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [saleForm, setSaleForm] = useState(emptySaleForm);
@@ -29,11 +30,16 @@ function App() {
     setLoading(true);
     setError("");
     try {
-      const [itemsResponse, reportsResponse] = await Promise.all([fetch(`${API_URL}/items`), fetch(`${API_URL}/reports/summary`)]);
-      if (!itemsResponse.ok || !reportsResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
-      const [itemsData, reportsData] = await Promise.all([itemsResponse.json(), reportsResponse.json()]);
+      const [itemsResponse, reportsResponse, movementsResponse] = await Promise.all([
+        fetch(`${API_URL}/items`),
+        fetch(`${API_URL}/reports/summary`),
+        fetch(`${API_URL}/movements?limit=12`),
+      ]);
+      if (!itemsResponse.ok || !reportsResponse.ok || !movementsResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
+      const [itemsData, reportsData, movementsData] = await Promise.all([itemsResponse.json(), reportsResponse.json(), movementsResponse.json()]);
       setItems([...itemsData].sort((a, b) => a.name.localeCompare(b.name)));
       setReports(reportsData);
+      setMovements(movementsData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -154,8 +160,8 @@ function App() {
             <div className="space-y-4">
               <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">AppStock local</span>
               <div className="space-y-3">
-                <h1 className="max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-5xl">Stock, ventas y tesoreria en una sola cabina operativa.</h1>
-                <p className="max-w-3xl text-sm text-slate-300 sm:text-base">Reportes de recaudacion, ganancias estimadas, ranking de ventas y alta rapida cuando un codigo escaneado todavia no existe.</p>
+                <h1 className="max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-5xl">Stock, ventas, tesoreria y trazabilidad en una sola cabina.</h1>
+                <p className="max-w-3xl text-sm text-slate-300 sm:text-base">Ahora tambien ves el historial de movimientos para seguir entradas, ventas y ajustes sobre cada producto.</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <SectionButton active={activeSection === "inventory"} onClick={() => setActiveSection("inventory")}>Inventario</SectionButton>
@@ -201,9 +207,14 @@ function App() {
             <Panel title="Control de stock" description="Visualiza inventario, edita datos y elimina productos obsoletos." action={<button type="button" onClick={refreshAll} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10">Recargar</button>}>
               {loading ? <EmptyState>Cargando inventario...</EmptyState> : <InventoryTable items={items} onEdit={startEditing} onDelete={handleDelete} />}
             </Panel>
-            <Panel title="Zona de reposicion" description="Productos en o por debajo de su stock minimo.">
-              {lowStockItems.length === 0 ? <EmptyState>No hay productos en stock bajo.</EmptyState> : lowStockItems.map((item) => <LowStockCard key={item.id} item={item} />)}
-            </Panel>
+            <div className="space-y-6">
+              <Panel title="Zona de reposicion" description="Productos en o por debajo de su stock minimo.">
+                {lowStockItems.length === 0 ? <EmptyState>No hay productos en stock bajo.</EmptyState> : lowStockItems.map((item) => <LowStockCard key={item.id} item={item} />)}
+              </Panel>
+              <Panel title="Historial de movimientos" description="Ultimas entradas, ventas y ajustes sobre el inventario.">
+                {movements.length === 0 ? <EmptyState>Todavia no hay movimientos registrados.</EmptyState> : movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}
+              </Panel>
+            </div>
           </section>
         ) : (
           <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -219,6 +230,10 @@ function App() {
                 <MetricCard label="Valor stock a costo" value={formatMoney(reports.inventory_cost_value)} />
                 <MetricCard label="Valor stock a venta" value={formatMoney(reports.inventory_sale_value)} />
                 <MetricCard label="Productos activos" value={reports.total_products} />
+              </div>
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Ultimos movimientos</h3>
+                <div className="mt-3 space-y-3">{movements.length === 0 ? <EmptyState>Todavia no hay movimientos registrados.</EmptyState> : movements.slice(0, 6).map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>
               </div>
             </Panel>
             <Panel title="Reportes inteligentes" description="Lectura rapida de recaudacion, ganancia y comportamiento de ventas.">
@@ -252,11 +267,9 @@ function SectionButton({ active, children, onClick }) { return <button type="but
 function MetricCard({ label, value, emphasis = false }) { return <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"><div className="text-xs uppercase tracking-[0.22em] text-slate-400">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "text-rose-300" : "text-white"}`}>{value}</div></div>; }
 function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"}`}>{error || message}</div>; }
 function EmptyState({ children }) { return <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-400">{children}</div>; }
-
-function InventoryTable({ items, onEdit, onDelete }) {
-  return <div className="overflow-x-auto"><table className="min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="text-xs uppercase tracking-[0.2em] text-slate-400"><tr><th className="px-3 py-2">Codigo</th><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Categoria</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="bg-slate-950/75 text-slate-200"><td className="rounded-l-2xl px-3 py-3 font-mono text-xs text-sky-200">{item.code}</td><td className="px-3 py-3 font-medium text-white">{item.name}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "bg-rose-500/15 text-rose-200" : "bg-emerald-500/15 text-emerald-200"}`}>{item.quantity} / min {item.min_quantity}</span></td><td className="px-3 py-3">{formatMoney(item.sale_price)}</td><td className="px-3 py-3">{formatMoney(item.cost_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20">Editar</button><button type="button" onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20">Eliminar</button></div></td></tr>; })}</tbody></table></div>;
-}
+function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="text-xs uppercase tracking-[0.2em] text-slate-400"><tr><th className="px-3 py-2">Codigo</th><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Categoria</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="bg-slate-950/75 text-slate-200"><td className="rounded-l-2xl px-3 py-3 font-mono text-xs text-sky-200">{item.code}</td><td className="px-3 py-3 font-medium text-white">{item.name}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "bg-rose-500/15 text-rose-200" : "bg-emerald-500/15 text-emerald-200"}`}>{item.quantity} / min {item.min_quantity}</span></td><td className="px-3 py-3">{formatMoney(item.sale_price)}</td><td className="px-3 py-3">{formatMoney(item.cost_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20">Editar</button><button type="button" onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
 function LowStockCard({ item }) { return <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{item.name}</div><div className="text-xs uppercase tracking-[0.2em] text-rose-100">{item.category}</div></div><div className="text-right text-sm text-rose-50"><div>Actual: {item.quantity}</div><div>Minimo: {item.min_quantity}</div></div></div></div>; }
+function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{movement.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{movement.movement_type} · {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
 function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3"><div className="font-medium text-white">{renderLabel(row)}</div><div className="text-sm text-slate-400">{renderMeta(row)}</div></div>)}</div></div>; }
 function SaleCard({ sale }) { return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{sale.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{sale.category}</div></div><div className="text-right text-sm text-slate-200"><div>{sale.quantity} uds</div><div>{formatMoney(sale.revenue)}</div></div></div></div>; }
 const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><input ref={ref} {...props} className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" /></label>; });

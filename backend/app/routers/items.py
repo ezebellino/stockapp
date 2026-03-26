@@ -1,8 +1,16 @@
 from sqlite3 import IntegrityError
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from ..models import SaleCreate, SaleRecord, StockAdjustment, StockItem, StockItemCreate, StockItemUpdate
+from ..models import (
+    InventoryMovement,
+    SaleCreate,
+    SaleRecord,
+    StockAdjustment,
+    StockItem,
+    StockItemCreate,
+    StockItemUpdate,
+)
 from ..repository import repository
 
 
@@ -30,6 +38,16 @@ def get_item_by_code(code: str) -> StockItem:
     return item
 
 
+@router.get("/items/{item_id}/movements", response_model=list[InventoryMovement])
+def get_item_movements(item_id: int, limit: int = Query(default=20, ge=1, le=100)) -> list[InventoryMovement]:
+    return repository.list_movements(limit=limit, item_id=item_id)
+
+
+@router.get("/movements", response_model=list[InventoryMovement])
+def list_movements(limit: int = Query(default=20, ge=1, le=100)) -> list[InventoryMovement]:
+    return repository.list_movements(limit=limit)
+
+
 @router.post("/items", response_model=StockItem, status_code=status.HTTP_201_CREATED)
 def create_item(payload: StockItemCreate) -> StockItem:
     if repository.get_by_code(payload.code):
@@ -37,7 +55,6 @@ def create_item(payload: StockItemCreate) -> StockItem:
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe un producto con ese codigo.",
         )
-
     return repository.create_item(payload)
 
 
@@ -79,7 +96,6 @@ def scan_item(code: str, payload: StockAdjustment) -> StockItem:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Producto no encontrado para el codigo escaneado.",
         )
-
     return item
 
 

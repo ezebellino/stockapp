@@ -47,6 +47,17 @@ class SaleRecord(BaseModel):
     created_at: str
 
 
+class InventoryMovement(BaseModel):
+    id: int
+    item_id: int | None = None
+    code: str
+    item_name: str
+    movement_type: str
+    quantity_delta: int
+    reference: str
+    created_at: str
+
+
 class RankedProduct(BaseModel):
     name: str
     quantity: int

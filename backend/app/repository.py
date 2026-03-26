@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 
 from .models import (
+    InventoryMovement,
     ReportSummary,
     RankedCategory,
     RankedProduct,
@@ -52,6 +53,20 @@ class SQLiteStockRepository:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS movements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER,
+                    code TEXT NOT NULL,
+                    item_name TEXT NOT NULL,
+                    movement_type TEXT NOT NULL,
+                    quantity_delta INTEGER NOT NULL,
+                    reference TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             connection.commit()
 
         self._ensure_legacy_columns()
@@ -66,7 +81,6 @@ class SQLiteStockRepository:
                 ORDER BY LOWER(name)
                 """
             ).fetchall()
-
         return [self._to_item(row) for row in rows]
 
     def get_item(self, item_id: int) -> StockItem | None:
@@ -79,7 +93,6 @@ class SQLiteStockRepository:
                 """,
                 (item_id,),
             ).fetchone()
-
         return self._to_item(row) if row else None
 
     def get_by_code(self, code: str) -> StockItem | None:
@@ -92,8 +105,32 @@ class SQLiteStockRepository:
                 """,
                 (code,),
             ).fetchone()
-
         return self._to_item(row) if row else None
+
+    def list_movements(self, *, limit: int = 20, item_id: int | None = None) -> list[InventoryMovement]:
+        with self._connect() as connection:
+            if item_id is None:
+                rows = connection.execute(
+                    """
+                    SELECT id, item_id, code, item_name, movement_type, quantity_delta, reference, created_at
+                    FROM movements
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT id, item_id, code, item_name, movement_type, quantity_delta, reference, created_at
+                    FROM movements
+                    WHERE item_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (item_id, limit),
+                ).fetchall()
+        return [self._to_movement(row) for row in rows]
 
     def create_item(self, payload: StockItemCreate) -> StockItem:
         with self._connect() as connection:
@@ -112,14 +149,29 @@ class SQLiteStockRepository:
                     payload.cost_price,
                 ),
             )
+            item_id = cursor.lastrowid
+            if payload.quantity > 0:
+                self._record_movement(
+                    connection,
+                    item_id=item_id,
+                    code=payload.code,
+                    item_name=payload.name,
+                    movement_type="CREATE",
+                    quantity_delta=payload.quantity,
+                    reference="Alta inicial",
+                )
             connection.commit()
 
-        item = self.get_item(cursor.lastrowid)
+        item = self.get_item(item_id)
         if item is None:
             raise RuntimeError("No se pudo recuperar el producto creado.")
         return item
 
     def update_item(self, item_id: int, payload: StockItemUpdate) -> StockItem | None:
+        current = self.get_item(item_id)
+        if current is None:
+            return None
+
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -138,6 +190,17 @@ class SQLiteStockRepository:
                     item_id,
                 ),
             )
+            quantity_delta = payload.quantity - current.quantity
+            if quantity_delta != 0:
+                self._record_movement(
+                    connection,
+                    item_id=item_id,
+                    code=payload.code,
+                    item_name=payload.name,
+                    movement_type="ADJUSTMENT",
+                    quantity_delta=quantity_delta,
+                    reference="Edicion manual",
+                )
             connection.commit()
 
         if cursor.rowcount == 0:
@@ -154,7 +217,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, quantity
+                SELECT id, code, name, quantity
                 FROM items
                 WHERE code = ?
                 """,
@@ -167,6 +230,15 @@ class SQLiteStockRepository:
                 "UPDATE items SET quantity = ? WHERE id = ?",
                 (row["quantity"] + amount, row["id"]),
             )
+            self._record_movement(
+                connection,
+                item_id=row["id"],
+                code=row["code"],
+                item_name=row["name"],
+                movement_type="ENTRY",
+                quantity_delta=amount,
+                reference="Ingreso por escaner",
+            )
             connection.commit()
 
         return self.get_by_code(code)
@@ -175,7 +247,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             item_row = connection.execute(
                 """
-                SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, quantity, sale_price, cost_price
                 FROM items
                 WHERE code = ?
                 """,
@@ -205,6 +277,15 @@ class SQLiteStockRepository:
                     unit_price,
                     item_row["cost_price"],
                 ),
+            )
+            self._record_movement(
+                connection,
+                item_id=item_row["id"],
+                code=item_row["code"],
+                item_name=item_row["name"],
+                movement_type="SALE",
+                quantity_delta=-payload.amount,
+                reference="Venta registrada",
             )
             connection.commit()
 
@@ -236,7 +317,6 @@ class SQLiteStockRepository:
                 FROM items
                 """
             ).fetchone()
-
             sales_row = connection.execute(
                 """
                 SELECT
@@ -247,33 +327,24 @@ class SQLiteStockRepository:
                 FROM sales
                 """
             ).fetchone()
-
             top_products_rows = connection.execute(
                 """
-                SELECT
-                    item_name AS name,
-                    SUM(quantity) AS quantity,
-                    SUM(quantity * unit_price) AS revenue
+                SELECT item_name AS name, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
                 FROM sales
                 GROUP BY item_name
                 ORDER BY quantity DESC, revenue DESC
                 LIMIT 5
                 """
             ).fetchall()
-
             top_categories_rows = connection.execute(
                 """
-                SELECT
-                    category,
-                    SUM(quantity) AS quantity,
-                    SUM(quantity * unit_price) AS revenue
+                SELECT category, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
                 FROM sales
                 GROUP BY category
                 ORDER BY quantity DESC, revenue DESC
                 LIMIT 5
                 """
             ).fetchall()
-
             recent_sales_rows = connection.execute(
                 """
                 SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
@@ -283,14 +354,8 @@ class SQLiteStockRepository:
                 """
             ).fetchall()
 
-        top_products = [
-            RankedProduct(name=row["name"], quantity=row["quantity"], revenue=row["revenue"])
-            for row in top_products_rows
-        ]
-        top_categories = [
-            RankedCategory(category=row["category"], quantity=row["quantity"], revenue=row["revenue"])
-            for row in top_categories_rows
-        ]
+        top_products = [RankedProduct(name=row["name"], quantity=row["quantity"], revenue=row["revenue"]) for row in top_products_rows]
+        top_categories = [RankedCategory(category=row["category"], quantity=row["quantity"], revenue=row["revenue"]) for row in top_categories_rows]
         recent_sales = [self._to_sale(row) for row in recent_sales_rows]
 
         return ReportSummary(
@@ -319,7 +384,6 @@ class SQLiteStockRepository:
             row = connection.execute("SELECT COUNT(*) AS total FROM items").fetchone()
             if row["total"] > 0:
                 return
-
             connection.executemany(
                 """
                 INSERT INTO items (code, name, category, quantity, min_quantity, sale_price, cost_price)
@@ -348,6 +412,25 @@ class SQLiteStockRepository:
                     """
                 )
             connection.commit()
+
+    def _record_movement(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        item_id: int | None,
+        code: str,
+        item_name: str,
+        movement_type: str,
+        quantity_delta: int,
+        reference: str,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO movements (item_id, code, item_name, movement_type, quantity_delta, reference)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (item_id, code, item_name, movement_type, quantity_delta, reference),
+        )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
@@ -386,6 +469,19 @@ class SQLiteStockRepository:
         )
 
     @staticmethod
+    def _to_movement(row: sqlite3.Row) -> InventoryMovement:
+        return InventoryMovement(
+            id=row["id"],
+            item_id=row["item_id"],
+            code=row["code"],
+            item_name=row["item_name"],
+            movement_type=row["movement_type"],
+            quantity_delta=row["quantity_delta"],
+            reference=row["reference"],
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
     def _build_insights(
         *,
         low_stock_count: int,
@@ -394,25 +490,18 @@ class SQLiteStockRepository:
         top_categories: list[RankedCategory],
     ) -> list[str]:
         insights: list[str] = []
-
         if top_products:
             winner = top_products[0]
             insights.append(f"El producto mas vendido es {winner.name} con {winner.quantity} unidades.")
         else:
             insights.append("Todavia no hay ventas registradas para generar tendencias.")
-
         if top_categories:
             winner_category = top_categories[0]
             insights.append(f"La categoria con mejor rotacion es {winner_category.category}.")
-
         if low_stock_count > 0:
-            insights.append(
-                f"Hay {low_stock_count} productos en zona de reposicion. Conviene revisar compras."
-            )
-
+            insights.append(f"Hay {low_stock_count} productos en zona de reposicion. Conviene revisar compras.")
         if total_profit > 0:
             insights.append("Las ventas actuales ya generan margen positivo estimado.")
-
         return insights
 
 
