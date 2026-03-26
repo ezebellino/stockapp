@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 from .models import (
@@ -99,6 +100,7 @@ class SQLiteStockRepository:
             connection.commit()
 
         self._ensure_legacy_columns()
+        self._normalize_existing_categories()
         self._seed_if_empty()
 
     def list_categories(self) -> list[Category]:
@@ -113,15 +115,18 @@ class SQLiteStockRepository:
         return [Category(id=row["id"], name=row["name"], created_at=row["created_at"]) for row in rows]
 
     def create_category(self, name: str) -> Category:
-        normalized_name = name.strip()
+        normalized_name = self._canonicalize_label(name)
         if not normalized_name:
             raise ValueError("La categoria no puede estar vacia.")
 
         with self._connect() as connection:
-            existing = connection.execute(
-                "SELECT id, name, created_at FROM categories WHERE LOWER(name) = LOWER(?)",
-                (normalized_name,),
-            ).fetchone()
+            existing_rows = connection.execute(
+                "SELECT id, name, created_at FROM categories"
+            ).fetchall()
+            existing = next(
+                (row for row in existing_rows if self._normalize_text_key(row["name"]) == self._normalize_text_key(normalized_name)),
+                None,
+            )
             if existing is not None:
                 raise ValueError("La categoria ya existe.")
 
@@ -138,14 +143,12 @@ class SQLiteStockRepository:
         return Category(id=row["id"], name=row["name"], created_at=row["created_at"])
 
     def ensure_category(self, name: str) -> None:
-        normalized_name = name.strip()
+        normalized_name = self._canonicalize_label(name)
         if not normalized_name:
             return
         with self._connect() as connection:
-            existing = connection.execute(
-                "SELECT id FROM categories WHERE LOWER(name) = LOWER(?)",
-                (normalized_name,),
-            ).fetchone()
+            rows = connection.execute("SELECT id, name FROM categories").fetchall()
+            existing = next((row for row in rows if self._normalize_text_key(row["name"]) == self._normalize_text_key(normalized_name)), None)
             if existing is None:
                 connection.execute("INSERT INTO categories (name) VALUES (?)", (normalized_name,))
                 connection.commit()
@@ -211,7 +214,8 @@ class SQLiteStockRepository:
         return [self._to_movement(row) for row in rows]
 
     def create_item(self, payload: StockItemCreate) -> StockItem:
-        self.ensure_category(payload.category)
+        category_name = self._canonicalize_label(payload.category)
+        self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -221,7 +225,7 @@ class SQLiteStockRepository:
                 (
                     payload.code,
                     payload.name,
-                    payload.category,
+                    category_name,
                     payload.quantity,
                     payload.min_quantity,
                     payload.sale_price,
@@ -251,7 +255,8 @@ class SQLiteStockRepository:
         if current is None:
             return None
 
-        self.ensure_category(payload.category)
+        category_name = self._canonicalize_label(payload.category)
+        self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -262,7 +267,7 @@ class SQLiteStockRepository:
                 (
                     payload.code,
                     payload.name,
-                    payload.category,
+                    category_name,
                     payload.quantity,
                     payload.min_quantity,
                     payload.sale_price,
@@ -659,12 +664,37 @@ class SQLiteStockRepository:
                 )
             categories = connection.execute("SELECT DISTINCT category FROM items WHERE TRIM(category) <> ''").fetchall()
             for category in categories:
-                exists = connection.execute(
-                    "SELECT id FROM categories WHERE LOWER(name) = LOWER(?)",
-                    (category["category"],),
-                ).fetchone()
+                canonical_name = self._canonicalize_label(category["category"])
+                rows = connection.execute("SELECT id, name FROM categories").fetchall()
+                exists = next((row for row in rows if self._normalize_text_key(row["name"]) == self._normalize_text_key(canonical_name)), None)
                 if exists is None:
-                    connection.execute("INSERT INTO categories (name) VALUES (?)", (category["category"],))
+                    connection.execute("INSERT INTO categories (name) VALUES (?)", (canonical_name,))
+            connection.commit()
+
+    def _normalize_existing_categories(self) -> None:
+        with self._connect() as connection:
+            item_rows = connection.execute("SELECT DISTINCT category FROM items WHERE TRIM(category) <> ''").fetchall()
+            for item_row in item_rows:
+                original_name = item_row["category"]
+                canonical_name = self._canonicalize_label(original_name)
+                if canonical_name and canonical_name != original_name:
+                    connection.execute("UPDATE items SET category = ? WHERE category = ?", (canonical_name, original_name))
+
+            category_rows = connection.execute("SELECT id, name FROM categories ORDER BY id ASC").fetchall()
+            grouped = {}
+            for row in category_rows:
+                canonical_name = self._canonicalize_label(row["name"])
+                key = self._normalize_text_key(canonical_name)
+                grouped.setdefault(key, []).append((row["id"], row["name"], canonical_name))
+
+            for rows in grouped.values():
+                keep_id, _original_name, canonical_name = rows[0]
+                for category_id, original_name, _canonical_name in rows:
+                    if canonical_name and original_name != canonical_name:
+                        connection.execute("UPDATE items SET category = ? WHERE category = ?", (canonical_name, original_name))
+                for category_id, _original_name, _canonical_name in rows[1:]:
+                    connection.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+                connection.execute("UPDATE categories SET name = ? WHERE id = ?", (canonical_name, keep_id))
             connection.commit()
 
     def _record_movement(
@@ -774,6 +804,43 @@ class SQLiteStockRepository:
     def _format_daily_label(value: str) -> str:
         year, month, day = value.split("-")
         return f"{day}/{month}"
+
+    @staticmethod
+    def _normalize_text_key(value: str) -> str:
+        normalized = unicodedata.normalize("NFD", value or "")
+        without_marks = "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+        return " ".join(without_marks.casefold().split())
+
+    @staticmethod
+    def _repair_text(value: str) -> str:
+        repaired = str(value or "")
+        replacements = {
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+            "??": "?",
+        }
+        for source, target in replacements.items():
+            repaired = repaired.replace(source, target)
+        return repaired
+
+    @classmethod
+    def _clean_label(cls, value: str) -> str:
+        repaired = cls._repair_text(value)
+        return " ".join(repaired.strip().split())
+
+    @classmethod
+    def _canonicalize_label(cls, value: str) -> str:
+        cleaned = cls._clean_label(value)
+        return " ".join(word[:1].upper() + word[1:].lower() for word in cleaned.split())
 
     @staticmethod
     def _build_sales_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
