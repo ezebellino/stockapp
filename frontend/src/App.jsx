@@ -33,6 +33,7 @@ function App() {
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
   const [cashCloseForm, setCashCloseForm] = useState(emptyCashCloseForm);
   const [treasuryFilter, setTreasuryFilter] = useState(emptyTreasuryFilter);
+  const [treasuryPreset, setTreasuryPreset] = useState("all");
   const [theme, setTheme] = useState("dark");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [scanCode, setScanCode] = useState("");
@@ -443,11 +444,20 @@ function App() {
 
   async function applyTreasuryFilter(event) {
     event.preventDefault();
+    setTreasuryPreset("custom");
     await refreshAll(treasuryFilter);
+  }
+
+  async function applyTreasuryPreset(preset) {
+    const nextFilter = buildTreasuryPresetFilter(preset);
+    setTreasuryPreset(preset);
+    setTreasuryFilter(nextFilter);
+    await refreshAll(nextFilter);
   }
 
   async function clearTreasuryFilter() {
     const nextFilter = { ...emptyTreasuryFilter };
+    setTreasuryPreset("all");
     setTreasuryFilter(nextFilter);
     await refreshAll(nextFilter);
   }
@@ -613,7 +623,7 @@ function App() {
           <section className="mt-6">
             {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length }) : null}
             {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection }) : null}
-            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales }) : null}
+            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, treasuryPreset, applyTreasuryPreset, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales }) : null}
           </section>
         </div>
       </div>
@@ -720,7 +730,7 @@ function renderInventorySection(props) {
 }
 
 function renderTreasurySection(props) {
-  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales } = props;
+  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, treasuryPreset, applyTreasuryPreset, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales } = props;
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -733,7 +743,7 @@ function renderTreasurySection(props) {
         </Panel>
         <Panel title="Registrar venta" description="Impacta stock, recaudación y margen estimado automáticamente."><form className="space-y-4" onSubmit={submitSale}><InputField label="Código de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} /><InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} /><InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} /><button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar venta</button></form></Panel>
       </section>
-      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]"><Panel title="Pulso diario de ventas" description="Una lectura r?pida para ver c?mo se mueve la recaudaci?n por d?a dentro del per?odo actual.">{dailySales.length === 0 ? <EmptyState>Todav?a no hay suficientes ventas para dibujar el gr?fico diario.</EmptyState> : <DailySalesChart rows={dailySales} />}</Panel><Panel title="Resumen ejecutivo" description="Indicadores r?pidos para tomar decisiones sin salir de tesorer?a."><div className="treasury-summary-grid grid gap-4 sm:grid-cols-2"><InsightCard title="Ticket promedio" value={cashSummary.today_sales_count > 0 ? formatMoney(cashSummary.today_revenue / cashSummary.today_sales_count) : formatMoney(0)} helper="Promedio de venta registrado en el per?odo visible." /><InsightCard title="Margen estimado" value={cashSummary.today_revenue > 0 ? `${Math.round((cashSummary.today_profit / cashSummary.today_revenue) * 100)}%` : "0%"} helper="Basado en recaudaci?n y costo declarado." /><InsightCard title="Caja actual" value={cashSummary.current_session ? "Abierta" : "Cerrada"} helper={cashSummary.current_session ? "Hay un turno operativo en curso." : "No hay turno activo en este momento."} /><InsightCard title="Ventas registradas" value={cashSummary.today_sales_count} helper={`${cashSummary.today_units_sold} unidades vendidas en el per?odo.`} /></div></Panel></section>
+      <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]"><Panel title="Pulso diario de ventas" description="Una lectura r?pida para ver c?mo se mueve la recaudaci?n por d?a dentro del per?odo actual." action={<div className="range-chip-group flex flex-wrap gap-2">{[{ id: "7d", label: "7 d?as" }, { id: "30d", label: "30 d?as" }, { id: "month", label: "Mes actual" }, { id: "all", label: "Todo" }].map((preset) => <button key={preset.id} type="button" onClick={() => applyTreasuryPreset(preset.id)} className={`rounded-full px-4 py-2 text-xs font-semibold transition ${treasuryPreset === preset.id ? "section-button section-button-active" : "section-button section-button-idle"}`}>{preset.label}</button>)}</div>}>{dailySales.length === 0 ? <EmptyState>Todav?a no hay suficientes ventas para dibujar el gr?fico diario.</EmptyState> : <DailySalesChart rows={dailySales} />}</Panel><Panel title="Resumen ejecutivo" description="Indicadores r?pidos para tomar decisiones sin salir de tesorer?a."><div className="treasury-summary-grid grid gap-4 sm:grid-cols-2"><InsightCard title="Ticket promedio" value={cashSummary.today_sales_count > 0 ? formatMoney(cashSummary.today_revenue / cashSummary.today_sales_count) : formatMoney(0)} helper="Promedio de venta registrado en el per?odo visible." /><InsightCard title="Margen estimado" value={cashSummary.today_revenue > 0 ? `${Math.round((cashSummary.today_profit / cashSummary.today_revenue) * 100)}%` : "0%"} helper="Basado en recaudaci?n y costo declarado." /><InsightCard title="Caja actual" value={cashSummary.current_session ? "Abierta" : "Cerrada"} helper={cashSummary.current_session ? "Hay un turno operativo en curso." : "No hay turno activo en este momento."} /><InsightCard title="Ventas registradas" value={cashSummary.today_sales_count} helper={`${cashSummary.today_units_sold} unidades vendidas en el per?odo.`} /></div></Panel></section>
       <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
           <Panel title="Período de análisis" description="Filtrá tesorería por rango de fechas para revisar cierres y ventas." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={exportTreasuryCsv} disabled={saving} className="section-button section-button-active rounded-full px-4 py-2 text-sm font-semibold transition">Descargar CSV</button><button type="button" onClick={printTreasurySummary} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-semibold transition">Imprimir resumen</button></div>}><form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}><InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} /><InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} /><button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Aplicar filtro</button><button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button></form>{treasuryFilterActive ? <div className="info-box mt-4 rounded-2xl px-4 py-3 text-sm">Mostrando tesorería desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}</Panel>
@@ -757,6 +767,8 @@ function formatMoney(value) { return money.format(Number(value || 0)); }
 function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }
 function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
 function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
+function buildTreasuryPresetFilter(preset) { const today = new Date(); const endDate = toDateInputValue(today); if (preset === "all") return { ...emptyTreasuryFilter }; if (preset === "month") return { startDate: toDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)), endDate }; const days = preset === "30d" ? 29 : 6; const start = new Date(today); start.setDate(today.getDate() - days); return { startDate: toDateInputValue(start), endDate }; }
+function toDateInputValue(value) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000); return local.toISOString().slice(0, 10); }
 function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
 function readLocalJson(key) { try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function buildInitials(value) { return String(value).split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "AL"; }

@@ -155,3 +155,7 @@ button, input, select { font: inherit; }
 :root[data-theme="sepia"] .inventory-health { background: linear-gradient(135deg, rgba(255, 248, 240, 0.92), rgba(195, 227, 215, 0.46)); }
 :root[data-theme="sepia"] .progress-track { background: rgba(143, 111, 91, 0.12); }
 :root[data-theme="sepia"] .chart-bar-wrap { background: linear-gradient(180deg, rgba(255,255,255,0.72), rgba(241, 228, 214, 0.72)); }
+
+.range-chip-group { align-items: center; }
+.range-chip-group .section-button { letter-spacing: 0.02em; }
+@media (max-width: 767px) { .range-chip-group { width: 100%; } .range-chip-group .section-button { flex: 1 1 auto; text-align: center; } }
