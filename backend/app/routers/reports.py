@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, ReportSummary
 from ..repository import repository
@@ -8,13 +8,19 @@ router = APIRouter(tags=["reports"])
 
 
 @router.get("/reports/summary", response_model=ReportSummary)
-def get_report_summary() -> ReportSummary:
-    return repository.get_report_summary()
+def get_report_summary(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+) -> ReportSummary:
+    return repository.get_report_summary(start_date=start_date, end_date=end_date)
 
 
 @router.get("/reports/cash-summary", response_model=DailyCashSummary)
-def get_cash_summary() -> DailyCashSummary:
-    return repository.get_daily_cash_summary()
+def get_cash_summary(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+) -> DailyCashSummary:
+    return repository.get_daily_cash_summary(start_date=start_date, end_date=end_date)
 
 
 @router.post("/cash-session/open", response_model=CashSession, status_code=status.HTTP_201_CREATED)

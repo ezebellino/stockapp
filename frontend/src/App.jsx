@@ -6,6 +6,7 @@ const emptyProductForm = { code: "", name: "", category: "General", quantity: 0,
 const emptySaleForm = { code: "", amount: 1, unit_price: "" };
 const emptyCashOpenForm = { opening_amount: "", notes: "" };
 const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
+const emptyTreasuryFilter = { startDate: "", endDate: "" };
 const scanLockMs = 1200;
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
   const [saleForm, setSaleForm] = useState(emptySaleForm);
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
   const [cashCloseForm, setCashCloseForm] = useState(emptyCashCloseForm);
+  const [treasuryFilter, setTreasuryFilter] = useState(emptyTreasuryFilter);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [scanCode, setScanCode] = useState("");
   const [scanAmount, setScanAmount] = useState(1);
@@ -66,15 +68,16 @@ function App() {
     };
   }, [activeSection]);
 
-  async function refreshAll() {
+  async function refreshAll(filters = treasuryFilter) {
     setLoading(true);
     setError("");
     try {
+      const treasuryQuery = buildDateQuery(filters);
       const [itemsResponse, reportsResponse, movementsResponse, cashResponse, categoriesResponse] = await Promise.all([
         fetch(`${API_URL}/items`),
-        fetch(`${API_URL}/reports/summary`),
+        fetch(`${API_URL}/reports/summary${treasuryQuery}`),
         fetch(`${API_URL}/movements?limit=12`),
-        fetch(`${API_URL}/reports/cash-summary`),
+        fetch(`${API_URL}/reports/cash-summary${treasuryQuery}`),
         fetch(`${API_URL}/categories`),
       ]);
       if (!itemsResponse.ok || !reportsResponse.ok || !movementsResponse.ok || !cashResponse.ok || !categoriesResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
@@ -314,6 +317,17 @@ function App() {
     setProductForm({ ...emptyProductForm, category: categories[0]?.name ?? "General" });
   }
 
+  async function applyTreasuryFilter(event) {
+    event.preventDefault();
+    await refreshAll(treasuryFilter);
+  }
+
+  async function clearTreasuryFilter() {
+    const nextFilter = { ...emptyTreasuryFilter };
+    setTreasuryFilter(nextFilter);
+    await refreshAll(nextFilter);
+  }
+
   function focusScanner() {
     if (activeSection !== "inventory") return;
     if (scanInputRef.current && document.activeElement !== scanInputRef.current) {
@@ -347,6 +361,7 @@ function App() {
   }
 
   const lowStockItems = items.filter((item) => item.quantity <= item.min_quantity);
+  const treasuryFilterActive = Boolean(treasuryFilter.startDate || treasuryFilter.endDate);
   const filteredItems = items.filter((item) => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return true;
@@ -463,17 +478,26 @@ function App() {
             </div>
 
             <div className="space-y-6">
-              <Panel title="Resumen de caja" description="Vista rapida del dia y ultimos cierres de jornada.">
+              <Panel title="Periodo de analisis" description="Filtra tesoreria por rango de fechas para revisar cierres y ventas.">
+                <form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}>
+                  <InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} />
+                  <InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} />
+                  <button type="submit" disabled={saving} className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">Aplicar filtro</button>
+                  <button type="button" onClick={clearTreasuryFilter} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10">Ver todo</button>
+                </form>
+                {treasuryFilterActive ? <div className="mt-4 rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">Mostrando tesoreria desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}
+              </Panel>
+              <Panel title="Resumen de caja" description={treasuryFilterActive ? "Totales del periodo filtrado y detalle de jornadas." : "Vista rapida del dia y ultimos cierres de jornada."}>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <MetricCard label="Recaudacion del dia" value={formatMoney(cashSummary.today_revenue)} />
-                  <MetricCard label="Ganancia del dia" value={formatMoney(cashSummary.today_profit)} />
-                  <MetricCard label="Ventas del dia" value={cashSummary.today_sales_count} />
+                  <MetricCard label={treasuryFilterActive ? "Recaudacion filtrada" : "Recaudacion del dia"} value={formatMoney(cashSummary.today_revenue)} />
+                  <MetricCard label={treasuryFilterActive ? "Ganancia filtrada" : "Ganancia del dia"} value={formatMoney(cashSummary.today_profit)} />
+                  <MetricCard label={treasuryFilterActive ? "Ventas filtradas" : "Ventas del dia"} value={cashSummary.today_sales_count} />
                   <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
                 </div>
                 <div className="mt-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Ultimos cierres</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Jornadas registradas</h3>
                   <div className="mt-3 space-y-3">
-                    {cashSummary.recent_sessions.length === 0 ? <EmptyState>Todavia no hay jornadas registradas.</EmptyState> : cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}
+                    {cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese periodo.</EmptyState> : cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}
                   </div>
                 </div>
               </Panel>
@@ -485,6 +509,10 @@ function App() {
                 <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Insights</h3>
                   <div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavia.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">{insight}</div>)}</div>
+                </div>
+                <div className="mt-5">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Ultimas ventas del periodo</h3>
+                  <div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese periodo.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div>
                 </div>
               </Panel>
             </div>
@@ -499,9 +527,12 @@ function createEmptyReports() { return { total_products: 0, total_units: 0, low_
 function createEmptyCashSummary() { return { current_session: null, today_revenue: 0, today_profit: 0, today_sales_count: 0, today_units_sold: 0, expected_cash_now: 0, recent_sessions: [] }; }
 function normalizeProductForm(form) { return { code: String(form.code).trim(), name: String(form.name).trim(), category: String(form.category).trim() || "General", quantity: Number(form.quantity), min_quantity: Number(form.min_quantity), sale_price: Number(form.sale_price), cost_price: Number(form.cost_price) }; }
 function formatMoney(value) { return money.format(Number(value || 0)); }
+function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }
 function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
-function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : formatMoney(diff)}</div></div></div>; }
+function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
+function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Esperado</span><span className="mt-1 block font-medium text-white">{formatMoney(session.expected_cash_amount)}</span></div><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Real / cierre</span><span className="mt-1 block font-medium text-white">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{session.notes}</div> : null}</div>; }
 function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3"><div className="font-medium text-white">{renderLabel(row)}</div><div className="text-sm text-slate-400">{renderMeta(row)}</div></div>)}</div></div>; }
+function RecentSaleCard({ sale }) { return <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{sale.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{sale.code} - {sale.category}</div></div><div className="text-right"><div className="font-medium text-emerald-200">{formatMoney(sale.revenue)}</div><div className="text-xs text-slate-400">{sale.quantity} uds</div></div></div><div className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{formatDateTime(sale.created_at)}</div></div>; }
 
 function handleText(setter) { return (event) => { const { name, value } = event.target; setter((current) => ({ ...current, [name]: value })); }; }
 function Panel({ title, description, action, children }) { return <article className="rounded-[28px] border border-white/10 bg-slate-900/75 p-5 shadow-panel backdrop-blur"><div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold text-white">{title}</h2><p className="text-sm text-slate-400">{description}</p></div>{action}</div>{children}</article>; }
@@ -516,6 +547,15 @@ function CategorySelect({ label, value, categories, onChange }) { return <label 
 const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><input ref={ref} {...props} className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" /></label>; });
 
 export default App;
+
+
+
+
+
+
+
+
+
 
 
 

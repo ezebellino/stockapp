@@ -383,7 +383,8 @@ class SQLiteStockRepository:
             raise RuntimeError("No se pudo recuperar el producto luego de la venta.")
         return sale, item
 
-    def get_report_summary(self) -> ReportSummary:
+    def get_report_summary(self, *, start_date: str | None = None, end_date: str | None = None) -> ReportSummary:
+        sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
         with self._connect() as connection:
             inventory_row = connection.execute(
                 """
@@ -397,40 +398,48 @@ class SQLiteStockRepository:
                 """
             ).fetchone()
             sales_row = connection.execute(
-                """
+                f"""
                 SELECT
                     COUNT(*) AS total_sales_count,
                     COALESCE(SUM(quantity), 0) AS total_units_sold,
                     COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
                     COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                 FROM sales
-                """
+                {sales_filter_sql}
+                """,
+                sales_filter_params,
             ).fetchone()
             top_products_rows = connection.execute(
-                """
+                f"""
                 SELECT item_name AS name, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
                 FROM sales
+                {sales_filter_sql}
                 GROUP BY item_name
                 ORDER BY quantity DESC, revenue DESC
                 LIMIT 5
-                """
+                """,
+                sales_filter_params,
             ).fetchall()
             top_categories_rows = connection.execute(
-                """
+                f"""
                 SELECT category, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
                 FROM sales
+                {sales_filter_sql}
                 GROUP BY category
                 ORDER BY quantity DESC, revenue DESC
                 LIMIT 5
-                """
+                """,
+                sales_filter_params,
             ).fetchall()
             recent_sales_rows = connection.execute(
-                """
+                f"""
                 SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
                 FROM sales
+                {sales_filter_sql}
                 ORDER BY id DESC
                 LIMIT 8
-                """
+                """,
+                sales_filter_params,
             ).fetchall()
 
         top_products = [RankedProduct(name=row["name"], quantity=row["quantity"], revenue=row["revenue"]) for row in top_products_rows]
@@ -458,10 +467,36 @@ class SQLiteStockRepository:
             ),
         )
 
-    def get_daily_cash_summary(self) -> DailyCashSummary:
+    def get_daily_cash_summary(self, *, start_date: str | None = None, end_date: str | None = None) -> DailyCashSummary:
         current_session = self.get_current_cash_session()
         with self._connect() as connection:
-            if current_session is None:
+            if start_date or end_date:
+                sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
+                today_row = connection.execute(
+                    f"""
+                    SELECT
+                        COUNT(*) AS total_sales_count,
+                        COALESCE(SUM(quantity), 0) AS total_units_sold,
+                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
+                    FROM sales
+                    {sales_filter_sql}
+                    """,
+                    sales_filter_params,
+                ).fetchone()
+                expected_cash_now = today_row["total_revenue"]
+                session_filter_sql, session_filter_params = self._build_session_period_filter(start_date=start_date, end_date=end_date)
+                recent_rows = connection.execute(
+                    f"""
+                    SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                    FROM cash_sessions
+                    {session_filter_sql}
+                    ORDER BY id DESC
+                    LIMIT 10
+                    """,
+                    session_filter_params,
+                ).fetchall()
+            elif current_session is None:
                 today_row = connection.execute(
                     """
                     SELECT
@@ -474,6 +509,14 @@ class SQLiteStockRepository:
                     """
                 ).fetchone()
                 expected_cash_now = today_row["total_revenue"]
+                recent_rows = connection.execute(
+                    """
+                    SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                    FROM cash_sessions
+                    ORDER BY id DESC
+                    LIMIT 7
+                    """
+                ).fetchall()
             else:
                 today_row = connection.execute(
                     """
@@ -488,18 +531,17 @@ class SQLiteStockRepository:
                     (current_session.opened_at,),
                 ).fetchone()
                 expected_cash_now = current_session.opening_amount + today_row["total_revenue"]
-
-            recent_rows = connection.execute(
-                """
-                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
-                FROM cash_sessions
-                ORDER BY id DESC
-                LIMIT 7
-                """
-            ).fetchall()
+                recent_rows = connection.execute(
+                    """
+                    SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                    FROM cash_sessions
+                    ORDER BY id DESC
+                    LIMIT 7
+                    """
+                ).fetchall()
 
         return DailyCashSummary(
-            current_session=current_session,
+            current_session=None if (start_date or end_date) else current_session,
             today_revenue=today_row["total_revenue"],
             today_profit=today_row["total_profit"],
             today_sales_count=today_row["total_sales_count"],
@@ -507,7 +549,6 @@ class SQLiteStockRepository:
             expected_cash_now=expected_cash_now,
             recent_sessions=[self._to_cash_session(row) for row in recent_rows],
         )
-
     def get_current_cash_session(self) -> CashSession | None:
         with self._connect() as connection:
             row = connection.execute(
@@ -668,6 +709,31 @@ class SQLiteStockRepository:
             closed_at=row["closed_at"],
         )
 
+    @staticmethod
+    def _build_sales_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if start_date:
+            clauses.append("DATE(created_at, 'localtime') >= DATE(?)")
+            params.append(start_date)
+        if end_date:
+            clauses.append("DATE(created_at, 'localtime') <= DATE(?)")
+            params.append(end_date)
+        sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return sql, tuple(params)
+
+    @staticmethod
+    def _build_session_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
+        clauses: list[str] = []
+        params: list[str] = []
+        if start_date:
+            clauses.append("DATE(opened_at, 'localtime') >= DATE(?)")
+            params.append(start_date)
+        if end_date:
+            clauses.append("DATE(opened_at, 'localtime') <= DATE(?)")
+            params.append(end_date)
+        sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return sql, tuple(params)
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
@@ -756,3 +822,4 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
