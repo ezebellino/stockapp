@@ -9,6 +9,7 @@ from .models import (
     CashSessionOpen,
     Category,
     DailyCashSummary,
+    DailySalesPoint,
     InventoryMovement,
     ReportSummary,
     RankedCategory,
