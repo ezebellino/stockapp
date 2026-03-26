@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
@@ -7,11 +7,17 @@ const emptySaleForm = { code: "", amount: 1, unit_price: "" };
 const emptyCashOpenForm = { opening_amount: "", notes: "" };
 const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
 const emptyTreasuryFilter = { startDate: "", endDate: "" };
-const availableThemes = {
-  dark: { label: "Oscuro" },
-  sepia: { label: "Claro sepia" },
-};
+const emptyAccessSetup = { businessName: "", userName: "", password: "", confirmPassword: "" };
+const emptyLoginForm = { userName: "", password: "" };
+const availableThemes = { dark: { label: "Oscuro" }, sepia: { label: "Claro sepia" } };
+const navItems = [
+  { id: "home", label: "Inicio", short: "IN" },
+  { id: "inventory", label: "Inventario", short: "IV" },
+  { id: "treasury", label: "Tesorería", short: "TS" },
+];
 const scanLockMs = 1200;
+const accessStorageKey = "appstock-local-access";
+const sessionStorageKey = "appstock-session-open";
 
 function App() {
   const [items, setItems] = useState([]);
@@ -19,7 +25,7 @@ function App() {
   const [cashSummary, setCashSummary] = useState(createEmptyCashSummary());
   const [categories, setCategories] = useState([]);
   const [movements, setMovements] = useState([]);
-  const [activeSection, setActiveSection] = useState("inventory");
+  const [activeSection, setActiveSection] = useState("home");
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [saleForm, setSaleForm] = useState(emptySaleForm);
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
@@ -37,29 +43,38 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [scanState, setScanState] = useState("ready");
   const [searchTerm, setSearchTerm] = useState("");
+  const [accessConfig, setAccessConfig] = useState(null);
+  const [sessionOpen, setSessionOpen] = useState(false);
+  const [accessSetupForm, setAccessSetupForm] = useState(emptyAccessSetup);
+  const [loginForm, setLoginForm] = useState(emptyLoginForm);
   const scanInputRef = useRef(null);
   const audioContextRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
 
   useEffect(() => {
     refreshAll();
+    const savedTheme = window.localStorage.getItem("appstock-theme");
+    if (savedTheme && availableThemes[savedTheme]) setTheme(savedTheme);
+    const savedAccess = readLocalJson(accessStorageKey);
+    if (savedAccess?.password && savedAccess?.userName) {
+      setAccessConfig(savedAccess);
+      setLoginForm((current) => ({ ...current, userName: savedAccess.userName }));
+    }
+    if (window.localStorage.getItem(sessionStorageKey) === "open") setSessionOpen(true);
   }, []);
 
   useEffect(() => {
-    if (activeSection !== "inventory") return undefined;
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
+    window.localStorage.setItem("appstock-theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!sessionOpen || activeSection !== "inventory") return undefined;
     focusScanner();
     function keepFocus(event) {
       const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "BUTTON" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.tagName === "BUTTON" || target.isContentEditable)) return;
       window.setTimeout(() => focusScanner(), 0);
     }
     function onVisibilityChange() {
@@ -71,7 +86,21 @@ function App() {
       document.removeEventListener("pointerdown", keepFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [activeSection]);
+  }, [activeSection, sessionOpen]);
+
+  const lowStockItems = useMemo(() => items.filter((item) => item.quantity <= item.min_quantity), [items]);
+  const filteredItems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((item) => item.name.toLowerCase().includes(term) || item.code.toLowerCase().includes(term) || item.category.toLowerCase().includes(term));
+  }, [items, searchTerm]);
+  const inventoryValue = useMemo(() => items.reduce((total, item) => total + item.quantity * item.sale_price, 0), [items]);
+  const costValue = useMemo(() => items.reduce((total, item) => total + item.quantity * item.cost_price, 0), [items]);
+  const latestMovements = useMemo(() => movements.slice(0, 5), [movements]);
+  const treasuryFilterActive = Boolean(treasuryFilter.startDate || treasuryFilter.endDate);
+  const currentDateLabel = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
+  const currentNavLabel = navItems.find((item) => item.id === activeSection)?.label ?? "Inicio";
+  const branchName = accessConfig?.businessName || "Tu local";
 
   async function refreshAll(filters = treasuryFilter) {
     setLoading(true);
@@ -87,11 +116,7 @@ function App() {
       ]);
       if (!itemsResponse.ok || !reportsResponse.ok || !movementsResponse.ok || !cashResponse.ok || !categoriesResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
       const [itemsData, reportsData, movementsData, cashData, categoriesData] = await Promise.all([
-        itemsResponse.json(),
-        reportsResponse.json(),
-        movementsResponse.json(),
-        cashResponse.json(),
-        categoriesResponse.json(),
+        itemsResponse.json(), reportsResponse.json(), movementsResponse.json(), cashResponse.json(), categoriesResponse.json(),
       ]);
       setItems([...itemsData].sort((a, b) => a.name.localeCompare(b.name)));
       setReports(reportsData);
@@ -99,10 +124,7 @@ function App() {
       setCashSummary(cashData);
       setCategories(categoriesData);
       if (cashData.current_session) {
-        setCashCloseForm((current) => ({
-          ...current,
-          actual_cash_amount: current.actual_cash_amount === "" ? String(cashData.expected_cash_now.toFixed(2)) : current.actual_cash_amount,
-        }));
+        setCashCloseForm((current) => ({ ...current, actual_cash_amount: current.actual_cash_amount === "" ? String(cashData.expected_cash_now.toFixed(2)) : current.actual_cash_amount }));
       } else {
         setCashCloseForm(emptyCashCloseForm);
       }
@@ -117,6 +139,47 @@ function App() {
     }
   }
 
+  function handleAccessSetup(event) {
+    event.preventDefault();
+    const payload = { businessName: accessSetupForm.businessName.trim(), userName: accessSetupForm.userName.trim(), password: accessSetupForm.password };
+    if (!payload.businessName || !payload.userName || payload.password.length < 4) {
+      setError("Completá el nombre del local, el usuario y una clave de al menos 4 caracteres.");
+      return;
+    }
+    if (accessSetupForm.password !== accessSetupForm.confirmPassword) {
+      setError("La confirmación de la clave no coincide.");
+      return;
+    }
+    window.localStorage.setItem(accessStorageKey, JSON.stringify(payload));
+    window.localStorage.setItem(sessionStorageKey, "open");
+    setAccessConfig(payload);
+    setLoginForm({ userName: payload.userName, password: "" });
+    setAccessSetupForm(emptyAccessSetup);
+    setSessionOpen(true);
+    setError("");
+    setMessage(`Bienvenido a ${payload.businessName}. El acceso local quedó configurado.`);
+  }
+
+  function handleLogin(event) {
+    event.preventDefault();
+    if (!accessConfig) return;
+    if (loginForm.userName.trim() !== accessConfig.userName || loginForm.password !== accessConfig.password) {
+      setError("Usuario o clave incorrectos.");
+      return;
+    }
+    window.localStorage.setItem(sessionStorageKey, "open");
+    setSessionOpen(true);
+    setError("");
+    setMessage(`Bienvenido de nuevo, ${accessConfig.userName}.`);
+  }
+
+  function handleLogout() {
+    window.localStorage.removeItem(sessionStorageKey);
+    setSessionOpen(false);
+    setLoginForm((current) => ({ ...current, password: "" }));
+    setError("");
+    setMessage("Sesión local cerrada correctamente.");
+  }
   async function submitProduct(event) {
     event.preventDefault();
     setSaving(true);
@@ -147,17 +210,13 @@ function App() {
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/categories`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newCategoryName }),
-      });
+      const response = await fetch(`${API_URL}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCategoryName }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "No se pudo guardar la categoria.");
+      if (!response.ok) throw new Error(data.detail || "No se pudo guardar la categoría.");
       setCategories((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
       setProductForm((current) => ({ ...current, category: data.name }));
       setNewCategoryName("");
-      setMessage(`Categoria creada: ${data.name}.`);
+      setMessage(`Categoría creada: ${data.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -229,7 +288,7 @@ function App() {
   async function processScan() {
     const normalizedCode = scanCode.trim();
     if (!normalizedCode) {
-      setError("Escanea o escribe un codigo antes de registrar.");
+      setError("Escaneá o escribí un código antes de registrar.");
       setScanState("error");
       playTone("error");
       focusScanner();
@@ -237,7 +296,7 @@ function App() {
     }
     const now = Date.now();
     if (lastScanRef.current.code === normalizedCode && now - lastScanRef.current.time < scanLockMs) {
-      setMessage("Lectura duplicada bloqueada para evitar doble ingreso accidental.");
+      setMessage("Lectura duplicada bloqueada para evitar un doble ingreso accidental.");
       setScanState("blocked");
       playTone("blocked");
       focusScanner();
@@ -257,7 +316,7 @@ function App() {
         setProductForm(nextProduct);
         setEditingId(null);
         setActiveSection("inventory");
-        setMessage("Codigo no encontrado. Completa el alta rapida para crear el producto.");
+        setMessage("Código no encontrado. Completá el alta rápida para crear el producto.");
         setScanState("warning");
         playTone("warning");
         return;
@@ -286,7 +345,7 @@ function App() {
   }
 
   async function handleDelete(item) {
-    if (!window.confirm(`Eliminar ${item.name}? Esta accion no se puede deshacer.`)) return;
+    if (!window.confirm(`¿Eliminar ${item.name}? Esta acción no se puede deshacer.`)) return;
     setSaving(true);
     setError("");
     try {
@@ -344,17 +403,16 @@ function App() {
       setSaving(false);
     }
   }
-
   function printTreasurySummary() {
     const printWindow = window.open("", "_blank", "width=980,height=720");
     if (!printWindow) {
-      setError("No se pudo abrir la vista de impresion.");
+      setError("No se pudo abrir la vista de impresión.");
       return;
     }
     const periodLabel = treasuryFilter.startDate || treasuryFilter.endDate ? `${treasuryFilter.startDate || "inicio"} a ${treasuryFilter.endDate || "hoy"}` : "Jornada actual";
-    const topProducts = reports.top_products.map((row) => `<li>${escapeHtml(row.name)}: ${row.quantity} uds - ${formatMoney(row.revenue)}</li>`).join("");
+    const topProducts = reports.top_products.map((row) => `<li>${escapeHtml(row.name)}: ${row.quantity} unidades - ${formatMoney(row.revenue)}</li>`).join("");
     const sessions = cashSummary.recent_sessions.map((session) => `<tr><td>${session.id}</td><td>${escapeHtml(session.status)}</td><td>${escapeHtml(formatDateTime(session.opened_at))}</td><td>${escapeHtml(session.closed_at ? formatDateTime(session.closed_at) : "Abierta")}</td><td>${formatMoney(session.expected_cash_amount)}</td><td>${session.actual_cash_amount == null ? "-" : formatMoney(session.actual_cash_amount)}</td><td>${session.difference_amount == null ? "-" : formatMoney(session.difference_amount)}</td></tr>`).join("");
-    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Cierre de tesoreria</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#1f2937}h1,h2{margin:0 0 12px}section{margin-top:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid #d6d3d1;border-radius:16px;padding:16px;background:#faf7f2}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;font-size:12px}ul{padding-left:18px}small{color:#6b7280}</style></head><body><h1>Cierre de tesoreria</h1><small>Periodo: ${escapeHtml(periodLabel)}</small><section class="grid"><div class="card"><strong>Recaudacion</strong><div>${formatMoney(cashSummary.today_revenue)}</div></div><div class="card"><strong>Ganancia</strong><div>${formatMoney(cashSummary.today_profit)}</div></div><div class="card"><strong>Ventas</strong><div>${cashSummary.today_sales_count}</div></div><div class="card"><strong>Caja esperada</strong><div>${formatMoney(cashSummary.expected_cash_now)}</div></div></section><section><h2>Productos mas vendidos</h2><ul>${topProducts || "<li>Sin datos suficientes.</li>"}</ul></section><section><h2>Jornadas</h2><table><thead><tr><th>ID</th><th>Estado</th><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Real</th><th>Diferencia</th></tr></thead><tbody>${sessions || "<tr><td colspan=\"7\">Sin jornadas registradas.</td></tr>"}</tbody></table></section></body></html>`);
+    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Cierre de tesorería</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#1f2937}h1,h2{margin:0 0 12px}section{margin-top:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid #d6d3d1;border-radius:16px;padding:16px;background:#faf7f2}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;font-size:12px}ul{padding-left:18px}small{color:#6b7280}</style></head><body><h1>Cierre de tesorería</h1><small>Período: ${escapeHtml(periodLabel)}</small><section class="grid"><div class="card"><strong>Recaudación</strong><div>${formatMoney(cashSummary.today_revenue)}</div></div><div class="card"><strong>Ganancia</strong><div>${formatMoney(cashSummary.today_profit)}</div></div><div class="card"><strong>Ventas</strong><div>${cashSummary.today_sales_count}</div></div><div class="card"><strong>Caja esperada</strong><div>${formatMoney(cashSummary.expected_cash_now)}</div></div></section><section><h2>Productos más vendidos</h2><ul>${topProducts || "<li>Sin datos suficientes.</li>"}</ul></section><section><h2>Jornadas</h2><table><thead><tr><th>ID</th><th>Estado</th><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Real</th><th>Diferencia</th></tr></thead><tbody>${sessions || "<tr><td colspan=\"7\">Sin jornadas registradas.</td></tr>"}</tbody></table></section></body></html>`);
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
@@ -403,171 +461,266 @@ function App() {
     oscillator.stop(startAt + settings.duration);
   }
 
-  const lowStockItems = items.filter((item) => item.quantity <= item.min_quantity);
-  const treasuryFilterActive = Boolean(treasuryFilter.startDate || treasuryFilter.endDate);
-  const filteredItems = items.filter((item) => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return true;
-    return item.name.toLowerCase().includes(term) || item.code.toLowerCase().includes(term) || item.category.toLowerCase().includes(term);
-  });
-
-  return (
-    <main className="app-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <section className="hero-shell overflow-hidden rounded-[30px] shadow-panel backdrop-blur">
-          <div className="grid gap-6 px-6 py-7 lg:grid-cols-[1.4fr_1fr]">
-            <div className="space-y-4">
-              <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">AppStock local</span>
-              <div className="space-y-3">
-                <h1 className="content-strong max-w-3xl text-3xl font-semibold leading-tight sm:text-5xl">Stock, ventas, tesoreria y trazabilidad en una sola cabina.</h1>
-                <p className="content-muted max-w-3xl text-sm sm:text-base">Ahora las categorias quedan persistidas para elegirlas rapido y poder sumar nuevas a medida que el negocio crece.</p>
+  if (!accessConfig) {
+    return (
+      <main className="auth-shell min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+        <div className="auth-grid mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.08fr_0.92fr]">
+          <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
+            <span className="eyebrow">Sistema local profesional</span>
+            <h1 className="auth-title mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Tu operación diaria, en español y lista para generar valor real.</h1>
+            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Configurá el acceso local una sola vez y empezá a trabajar con inventario, caja, reportes y control por escáner desde una interfaz clara, ordenada y profesional.</p>
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              <FeatureCard title="Inicio claro" description="Un Home de bienvenida con métricas y estado del local." />
+              <FeatureCard title="Inventario sólido" description="Altas, edición, escáner y alertas de stock bajo." />
+              <FeatureCard title="Tesorería útil" description="Caja diaria, ventas, reportes y exportación rápida." />
+            </div>
+          </section>
+          <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <span className="eyebrow">Primer acceso</span>
+                <h2 className="auth-title mt-3 text-3xl font-semibold">Crear acceso local</h2>
+                <p className="auth-text mt-2 text-sm">Este ingreso solo protege la apertura del sistema en esta PC del local.</p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <SectionButton active={activeSection === "inventory"} onClick={() => setActiveSection("inventory")}>Inventario</SectionButton>
-                <SectionButton active={activeSection === "treasury"} onClick={() => setActiveSection("treasury")}>Tesoreria</SectionButton>
-              </div>
+              <ThemeToggle theme={theme} onChange={setTheme} compact />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <MetricCard label="Recaudacion" value={formatMoney(reports.total_revenue)} />
-              <MetricCard label="Ganancia" value={formatMoney(reports.total_profit)} />
-              <MetricCard label="Unidades vendidas" value={reports.total_units_sold} />
-              <MetricCard label="Stock bajo" value={reports.low_stock_count} emphasis={reports.low_stock_count > 0} />
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-          <Panel title="Ingreso por escaner" description="Autoenfoque constante, enter del lector y proteccion contra doble lectura." action={<button type="button" onClick={focusScanner} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20">Enfocar</button>}>
-            <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-              <ScannerStatus state={scanState} />
-              <div className="card-surface content-muted rounded-2xl px-4 py-3 text-xs uppercase tracking-[0.2em]">Enter del lector: envio inmediato</div>
-            </div>
-            <form className="space-y-4" onSubmit={submitScan}>
-              <InputField ref={scanInputRef} label="Codigo escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escanea o escribe el codigo" autoComplete="off" />
-              <InputField label="Cantidad a ingresar" name="scanAmount" type="number" min="1" value={scanAmount} onChange={(event) => setScanAmount(event.target.value)} />
-              <button type="submit" disabled={saving} className="w-full rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">Registrar ingreso</button>
+            <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
+              <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacén San Martín" />
+              <InputField label="Usuario local" name="userName" value={accessSetupForm.userName} onChange={handleText(setAccessSetupForm)} placeholder="Administrador" />
+              <InputField label="Clave local" name="password" type="password" value={accessSetupForm.password} onChange={handleText(setAccessSetupForm)} placeholder="Mínimo 4 caracteres" />
+              <InputField label="Confirmar clave" name="confirmPassword" type="password" value={accessSetupForm.confirmPassword} onChange={handleText(setAccessSetupForm)} placeholder="Repetí la clave" />
+              <button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Ingresar al sistema</button>
             </form>
             <StatusPanel message={message} error={error} />
-            {scanCandidate ? <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">Codigo nuevo detectado: {scanCandidate.code}. Completa el formulario y guardalo.</div> : null}
-          </Panel>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
-          <Panel title={editingId ? "Editar producto" : "Alta manual de producto"} description="Crea, corrige o completa productos sin salir de la pantalla principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={submitProduct}>
-              <InputField label="Codigo de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
-              <InputField label="Nombre" name="name" value={productForm.name} onChange={handleText(setProductForm)} />
-              <CategorySelect label="Categoria" value={productForm.category} categories={categories} onChange={(value) => setProductForm((current) => ({ ...current, category: value }))} />
-              <InputField label="Stock actual" name="quantity" type="number" min="0" value={productForm.quantity} onChange={handleText(setProductForm)} />
-              <InputField label="Stock minimo" name="min_quantity" type="number" min="0" value={productForm.min_quantity} onChange={handleText(setProductForm)} />
-              <InputField label="Precio de venta" name="sale_price" type="number" min="0" step="0.01" value={productForm.sale_price} onChange={handleText(setProductForm)} />
-              <InputField label="Costo" name="cost_price" type="number" min="0" step="0.01" value={productForm.cost_price} onChange={handleText(setProductForm)} />
-              <button type="submit" disabled={saving} className="md:col-span-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
-            </form>
-            <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
-              <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Crea la primera categoria del local" : "Agregar nueva categoria"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
-              <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60">Guardar categoria</button>
-            </form>
-            {categories.length === 0 ? <div className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Todavia no hay categorias. Carga la primera para dejar el alta de productos lista para el local.</div> : null}
-          </Panel>
-        </section>        {activeSection === "inventory" ? (
-          <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <Panel title="Control de stock" description="Visualiza inventario, edita datos, busca por codigo o nombre y elimina productos obsoletos." action={<div className="flex flex-wrap gap-3"><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar por codigo, nombre o categoria" className="field-input rounded-full px-4 py-2 text-sm outline-none transition" /><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Recargar</button></div>}>
-              {loading ? <EmptyState>Cargando inventario...</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}
-            </Panel>
-            <div className="space-y-6">
-              <Panel title="Categorias disponibles" description="Quedan guardadas para reutilizarlas en cada alta de producto.">
-                {categories.length === 0 ? <EmptyState>Todavia no hay categorias cargadas.</EmptyState> : categories.map((category) => <div key={category.id} className="card-surface content-default rounded-2xl px-4 py-3 text-sm">{category.name}</div>)}
-              </Panel>
-              <Panel title="Historial de movimientos" description="Ultimas entradas, ventas y ajustes sobre el inventario.">
-                {movements.length === 0 ? <EmptyState>Todavia no hay movimientos registrados.</EmptyState> : movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}
-              </Panel>
+  if (!sessionOpen) {
+    return (
+      <main className="auth-shell min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+        <div className="auth-grid mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_0.92fr]">
+          <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
+            <span className="eyebrow">Bienvenido a {branchName}</span>
+            <h1 className="auth-title mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Control total del negocio desde una sola cabina.</h1>
+            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Ingresá con tu acceso local para continuar con las ventas, el inventario, la caja diaria y los reportes inteligentes del comercio.</p>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2">
+              <MiniStat label="Productos activos" value={items.length} />
+              <MiniStat label="Categorías cargadas" value={categories.length} />
+              <MiniStat label="Movimientos recientes" value={movements.length} />
+              <MiniStat label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
             </div>
           </section>
-        ) : (
-          <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="space-y-6">
-              <Panel title="Caja diaria" description="Abrir la jornada, seguir el esperado de caja y cerrar con monto real.">
-                {cashSummary.current_session ? (
-                  <div className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <MetricCard label="Caja inicial" value={formatMoney(cashSummary.current_session.opening_amount)} />
-                      <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
-                      <MetricCard label="Ventas del turno" value={cashSummary.today_sales_count} />
-                      <MetricCard label="Unidades del turno" value={cashSummary.today_units_sold} />
-                    </div>
-                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-sm text-emerald-50">Caja abierta desde {formatDateTime(cashSummary.current_session.opened_at)}.</div>
-                    <form className="grid gap-4 md:grid-cols-2" onSubmit={submitCashClose}>
-                      <InputField label="Monto real al cierre" name="actual_cash_amount" type="number" min="0" step="0.01" value={cashCloseForm.actual_cash_amount} onChange={handleText(setCashCloseForm)} />
-                      <InputField label="Observaciones de cierre" name="notes" value={cashCloseForm.notes} onChange={handleText(setCashCloseForm)} />
-                      <button type="submit" disabled={saving} className="md:col-span-2 rounded-2xl bg-amber-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-60">Cerrar caja</button>
-                    </form>
-                  </div>
-                ) : (
-                  <form className="grid gap-4 md:grid-cols-2" onSubmit={submitCashOpen}>
-                    <InputField label="Monto inicial" name="opening_amount" type="number" min="0" step="0.01" value={cashOpenForm.opening_amount} onChange={handleText(setCashOpenForm)} />
-                    <InputField label="Observaciones de apertura" name="notes" value={cashOpenForm.notes} onChange={handleText(setCashOpenForm)} />
-                    <button type="submit" disabled={saving} className="md:col-span-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Abrir caja</button>
-                  </form>
-                )}
-              </Panel>
-
-              <Panel title="Registrar venta" description="Impacta stock, recaudacion y ganancias estimadas.">
-                <form className="grid gap-4 md:grid-cols-2" onSubmit={submitSale}>
-                  <InputField label="Codigo de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} />
-                  <InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} />
-                  <InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} />
-                  <div className="flex items-end"><button type="submit" disabled={saving} className="w-full rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-300 disabled:cursor-not-allowed disabled:opacity-60">Registrar venta</button></div>
-                </form>
-              </Panel>
+          <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <span className="eyebrow">Acceso local</span>
+                <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
+                <p className="auth-text mt-2 text-sm">Protección local para esta PC. No requiere Internet ni cuentas externas.</p>
+              </div>
+              <ThemeToggle theme={theme} onChange={setTheme} compact />
             </div>
-
-            <div className="space-y-6">
-              <Panel title="Periodo de analisis" description="Filtra tesoreria por rango de fechas para revisar cierres y ventas.">
-                <form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}>
-                  <InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} />
-                  <InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} />
-                  <button type="submit" disabled={saving} className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">Aplicar filtro</button>
-                  <button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button>
-                  <button type="button" onClick={exportTreasuryCsv} disabled={saving} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Descargar CSV</button>
-                  <button type="button" onClick={printTreasurySummary} className="rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/20">Imprimir resumen</button>
-                </form>
-                {treasuryFilterActive ? <div className="mt-4 rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">Mostrando tesoreria desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}
-              </Panel>
-              <Panel title="Resumen de caja" description={treasuryFilterActive ? "Totales del periodo filtrado y detalle de jornadas." : "Vista rapida del dia y ultimos cierres de jornada."}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <MetricCard label={treasuryFilterActive ? "Recaudacion filtrada" : "Recaudacion del dia"} value={formatMoney(cashSummary.today_revenue)} />
-                  <MetricCard label={treasuryFilterActive ? "Ganancia filtrada" : "Ganancia del dia"} value={formatMoney(cashSummary.today_profit)} />
-                  <MetricCard label={treasuryFilterActive ? "Ventas filtradas" : "Ventas del dia"} value={cashSummary.today_sales_count} />
-                  <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
-                </div>
-                <div className="mt-5">
-                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Jornadas registradas</h3>
-                  <div className="mt-3 space-y-3">
-                    {cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese periodo.</EmptyState> : cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}
-                  </div>
-                </div>
-              </Panel>
-              <Panel title="Reportes inteligentes" description="Lectura rapida de recaudacion, ganancia y comportamiento de ventas.">
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <ReportList title="Productos mas vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} uds - ${formatMoney(row.revenue)}`} />
-                  <ReportList title="Categorias mas vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} uds - ${formatMoney(row.revenue)}`} />
-                </div>
-                <div className="soft-card mt-5 rounded-2xl p-4">
-                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3>
-                  <div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavia.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">{insight}</div>)}</div>
-                </div>
-                <div className="mt-5">
-                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Ultimas ventas del periodo</h3>
-                  <div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese periodo.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div>
-                </div>
-              </Panel>
-            </div>
+            <form className="mt-8 space-y-4" onSubmit={handleLogin}>
+              <InputField label="Usuario" name="userName" value={loginForm.userName} onChange={handleText(setLoginForm)} />
+              <InputField label="Clave" name="password" type="password" value={loginForm.password} onChange={handleText(setLoginForm)} placeholder="Ingresá tu clave local" />
+              <button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Entrar</button>
+            </form>
+            <StatusPanel message={message} error={error} />
           </section>
-        )}
+        </div>
+      </main>
+    );
+  }
+  return (
+    <main className="app-shell min-h-screen">
+      <div className="dashboard-layout grid min-h-screen lg:grid-cols-[290px_minmax(0,1fr)]">
+        <aside className="sidebar-shell border-r px-5 py-6 lg:px-6">
+          <div>
+            <div className="brand-title text-3xl font-semibold">AppStock Local</div>
+            <div className="brand-subtitle mt-1 text-xs uppercase tracking-[0.24em]">Panel de control comercial</div>
+          </div>
+          <div className="branch-card mt-8 rounded-[28px] p-5">
+            <div className="flex items-center gap-4">
+              <div className="avatar-badge flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-semibold">{buildInitials(branchName)}</div>
+              <div>
+                <div className="content-strong text-xl font-semibold">{branchName}</div>
+                <div className="content-muted text-sm">Estado operativo local</div>
+              </div>
+            </div>
+          </div>
+          <nav className="mt-8 space-y-2">
+            {navItems.map((item) => <SidebarLink key={item.id} item={item} active={activeSection === item.id} onClick={() => setActiveSection(item.id)} />)}
+          </nav>
+          <div className="soft-card mt-8 rounded-[28px] p-5">
+            <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen rápido</div>
+            <div className="mt-4 space-y-4">
+              <MiniLine label="Ventas del período" value={formatMoney(cashSummary.today_revenue)} />
+              <MiniLine label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
+              <MiniLine label="Stock bajo" value={lowStockItems.length} />
+            </div>
+          </div>
+          <div className="mt-auto pt-8">
+            <button type="button" onClick={handleLogout} className="section-button section-button-idle w-full rounded-2xl px-4 py-3 text-sm font-semibold transition">Cerrar sesión local</button>
+          </div>
+        </aside>
+
+        <div className="main-shell px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+          <header className="topbar-shell flex flex-col gap-4 rounded-[30px] px-5 py-5 shadow-panel sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="panel-description text-xs uppercase tracking-[0.26em]">{sectionEyebrow(activeSection)}</div>
+              <h1 className="panel-title mt-2 text-3xl font-semibold sm:text-4xl">{sectionTitle(activeSection, branchName)}</h1>
+              <p className="panel-description mt-2 text-sm sm:text-base">{sectionDescription(activeSection)}</p>
+            </div>
+            <div className="flex flex-col gap-3 sm:items-end">
+              <div className="flex flex-wrap items-center gap-3">
+                <ThemeToggle theme={theme} onChange={setTheme} />
+                <div className="date-pill rounded-2xl px-4 py-3 text-right">
+                  <div className="panel-description text-[11px] uppercase tracking-[0.24em]">Fecha actual</div>
+                  <div className="panel-title mt-1 text-sm font-semibold capitalize">{currentDateLabel}</div>
+                </div>
+              </div>
+              <div className="welcome-line text-sm">Sesión local activa para <strong>{accessConfig.userName}</strong> en <strong>{currentNavLabel}</strong>.</div>
+            </div>
+          </header>
+
+          <StatusPanel message={message} error={error} />
+
+          <section className="mt-6">
+            {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection }) : null}
+            {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems }) : null}
+            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports }) : null}
+          </section>
+        </div>
       </div>
     </main>
   );
 }
 
+function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection }) {
+  const topProduct = reports.top_products[0];
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+        <Panel title={`Bienvenido a ${branchName}`} description="Tu punto de entrada para revisar el estado general del negocio, la caja y el inventario del local.">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Recaudación" value={formatMoney(reports.total_revenue)} />
+            <MetricCard label="Ganancia" value={formatMoney(reports.total_profit)} />
+            <MetricCard label="Valor de inventario" value={formatMoney(inventoryValue)} />
+            <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <QuickAction title="Ir a Inventario" description="Altas, edición, escáner y stock." onClick={() => setActiveSection("inventory")} />
+            <QuickAction title="Abrir Tesorería" description="Caja diaria, ventas y reportes." onClick={() => setActiveSection("treasury")} />
+            <QuickAction title="Ver alertas" description={`${lowStockItems.length} productos en reposición.`} onClick={() => setActiveSection("inventory")} emphasis={lowStockItems.length > 0} />
+          </div>
+        </Panel>
+        <Panel title="Estado operativo" description="Resumen inmediato del local y del turno actual.">
+          <div className="space-y-4">
+            <StatusRow label="Caja" value={cashSummary.current_session ? "Abierta" : "Cerrada"} strong={Boolean(cashSummary.current_session)} />
+            <StatusRow label="Ventas del día" value={cashSummary.today_sales_count} />
+            <StatusRow label="Unidades vendidas" value={cashSummary.today_units_sold} />
+            <StatusRow label="Costo inmovilizado" value={formatMoney(costValue)} />
+          </div>
+        </Panel>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel title="Actividad reciente" description="Últimos movimientos relevantes del sistema local.">
+          {loading ? <EmptyState>Cargando actividad…</EmptyState> : latestMovements.length === 0 ? <EmptyState>Todavía no hay actividad registrada.</EmptyState> : <div className="space-y-3">{latestMovements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}
+        </Panel>
+        <Panel title="Inteligencia comercial" description="Lectura rápida para decidir qué mirar primero.">
+          <div className="space-y-4">
+            <InsightCard title="Producto líder" value={topProduct ? topProduct.name : "Sin ventas todavía"} helper={topProduct ? `${topProduct.quantity} unidades vendidas` : "Registrá ventas para ver tendencias."} />
+            <InsightCard title="Productos con stock bajo" value={lowStockItems.length} helper={lowStockItems.length > 0 ? "Conviene revisar compras o reposición." : "Sin alertas críticas por ahora."} />
+            <InsightCard title="Margen estimado" value={formatMoney(reports.total_profit)} helper="Calculado sobre ventas registradas y costo cargado." />
+          </div>
+        </Panel>
+      </section>
+    </div>
+  );
+}
+function renderInventorySection(props) {
+  const { loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems } = props;
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <Panel title="Buscador y escáner" description="Buscá productos, registrá ingresos y mantené el foco listo para el lector de códigos.">
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4">
+              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, código o categoría</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar producto…" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]"><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Actualizar datos</button><SummaryBadge label="Valor inventario" value={formatMoney(inventoryValue)} /></div>
+            </div>
+            <div className="card-surface rounded-[28px] p-5">
+              <div className="flex items-center justify-between gap-3"><h3 className="panel-title text-lg font-semibold">Ingreso por escáner</h3><ScannerStatus state={scanState} /></div>
+              <form className="mt-4 space-y-4" onSubmit={submitScan}>
+                <InputField ref={scanInputRef} label="Código escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escaneá o escribí el código" autoComplete="off" />
+                <InputField label="Cantidad a ingresar" name="scanAmount" type="number" min="1" value={scanAmount} onChange={(event) => setScanAmount(event.target.value)} />
+                <button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar ingreso</button>
+              </form>
+              {scanCandidate ? <div className="warning-box mt-4 rounded-2xl px-4 py-3 text-sm">Código nuevo detectado. Completá el alta rápida para guardarlo.</div> : null}
+            </div>
+          </div>
+        </Panel>
+        <Panel title={editingId ? "Editar producto" : "Nuevo producto"} description="Alta manual, edición y carga de categorías sin salir del panel principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
+          <form className="grid gap-4 md:grid-cols-2" onSubmit={submitProduct}>
+            <InputField label="Código de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
+            <InputField label="Nombre del producto" name="name" value={productForm.name} onChange={handleText(setProductForm)} />
+            <CategorySelect label="Categoría" value={productForm.category} categories={categories} onChange={(value) => setProductForm((current) => ({ ...current, category: value }))} />
+            <InputField label="Stock actual" name="quantity" type="number" min="0" value={productForm.quantity} onChange={handleText(setProductForm)} />
+            <InputField label="Stock mínimo" name="min_quantity" type="number" min="0" value={productForm.min_quantity} onChange={handleText(setProductForm)} />
+            <InputField label="Precio de venta" name="sale_price" type="number" min="0" step="0.01" value={productForm.sale_price} onChange={handleText(setProductForm)} />
+            <InputField label="Costo" name="cost_price" type="number" min="0" step="0.01" value={productForm.cost_price} onChange={handleText(setProductForm)} />
+            <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
+          </form>
+          <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
+            <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Creá la primera categoría del local" : "Agregar nueva categoría"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
+            <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Guardar categoría</button>
+          </form>
+        </Panel>
+      </section>
+      <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <Panel title="Catálogo de productos" description="Visualizá inventario, editá datos, buscá rápido y eliminá productos obsoletos.">{loading ? <EmptyState>Cargando inventario…</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}</Panel>
+        <div className="space-y-6">
+          <Panel title="Estado de stock" description="Una vista rápida para priorizar la reposición."><div className="grid gap-4 sm:grid-cols-2"><MetricCard label="Categorías" value={categories.length} /><MetricCard label="Stock bajo" value={lowStockItems.length} emphasis={lowStockItems.length > 0} /></div></Panel>
+          <Panel title="Últimos movimientos" description="Entradas, ventas y ajustes más recientes del inventario.">{movements.length === 0 ? <EmptyState>Todavía no hay movimientos registrados.</EmptyState> : <div className="space-y-3">{movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}</Panel>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function renderTreasurySection(props) {
+  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports } = props;
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <Panel title="Control de caja" description="Abrí o cerrá el turno, registrá ventas y seguí el balance del día en tiempo real.">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ActionCard title="Abrir caja" description="Iniciá el turno con el saldo base verificado."><form className="space-y-3" onSubmit={submitCashOpen}><InputField label="Monto inicial" name="opening_amount" type="number" min="0" step="0.01" value={cashOpenForm.opening_amount} onChange={handleText(setCashOpenForm)} /><InputField label="Observaciones de apertura" name="notes" value={cashOpenForm.notes} onChange={handleText(setCashOpenForm)} /><button type="submit" disabled={saving || Boolean(cashSummary.current_session)} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Abrir caja</button></form></ActionCard>
+            <ActionCard title="Cerrar caja" description="Finalizá el turno y registrá el monto real del cierre." subtle><form className="space-y-3" onSubmit={submitCashClose}><InputField label="Monto real al cierre" name="actual_cash_amount" type="number" min="0" step="0.01" value={cashCloseForm.actual_cash_amount} onChange={handleText(setCashCloseForm)} /><InputField label="Observaciones de cierre" name="notes" value={cashCloseForm.notes} onChange={handleText(setCashCloseForm)} /><button type="submit" disabled={saving || !cashSummary.current_session} className="secondary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Cerrar caja</button></form></ActionCard>
+          </div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} /><MetricCard label="Recaudación" value={formatMoney(cashSummary.today_revenue)} /><MetricCard label="Ganancia" value={formatMoney(cashSummary.today_profit)} /><MetricCard label="Ventas del período" value={cashSummary.today_sales_count} /></div>
+        </Panel>
+        <Panel title="Registrar venta" description="Impacta stock, recaudación y margen estimado automáticamente."><form className="space-y-4" onSubmit={submitSale}><InputField label="Código de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} /><InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} /><InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} /><button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar venta</button></form></Panel>
+      </section>
+      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="space-y-6">
+          <Panel title="Período de análisis" description="Filtrá tesorería por rango de fechas para revisar cierres y ventas." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={exportTreasuryCsv} disabled={saving} className="section-button section-button-active rounded-full px-4 py-2 text-sm font-semibold transition">Descargar CSV</button><button type="button" onClick={printTreasurySummary} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-semibold transition">Imprimir resumen</button></div>}><form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}><InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} /><InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} /><button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Aplicar filtro</button><button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button></form>{treasuryFilterActive ? <div className="info-box mt-4 rounded-2xl px-4 py-3 text-sm">Mostrando tesorería desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}</Panel>
+          <Panel title="Jornadas registradas" description={treasuryFilterActive ? "Cierres y aperturas del período filtrado." : "Últimos cierres y turnos de caja registrados."}>{cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese período.</EmptyState> : <div className="space-y-3">{cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}</div>}</Panel>
+        </div>
+        <div className="space-y-6">
+          <Panel title="Reportes inteligentes" description="Lectura rápida de recaudación, ganancia y comportamiento de ventas.">
+            <div className="grid gap-4 lg:grid-cols-2"><ReportList title="Productos más vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} unidades · ${formatMoney(row.revenue)}`} /><ReportList title="Categorías más vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} unidades · ${formatMoney(row.revenue)}`} /></div>
+            <div className="soft-card mt-5 rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3><div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavía.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="success-soft rounded-2xl px-4 py-3 text-sm">{insight}</div>)}</div></div>
+            <div className="mt-5"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Últimas ventas del período</h3><div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese período.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div></div>
+          </Panel>
+        </div>
+      </section>
+    </div>
+  );
+}
 function createEmptyReports() { return { total_products: 0, total_units: 0, low_stock_count: 0, inventory_cost_value: 0, inventory_sale_value: 0, total_revenue: 0, total_profit: 0, total_sales_count: 0, total_units_sold: 0, top_products: [], top_categories: [], recent_sales: [], insights: [] }; }
 function createEmptyCashSummary() { return { current_session: null, today_revenue: 0, today_profit: 0, today_sales_count: 0, today_units_sold: 0, expected_cash_now: 0, recent_sessions: [] }; }
 function normalizeProductForm(form) { return { code: String(form.code).trim(), name: String(form.name).trim(), category: String(form.category).trim() || "General", quantity: Number(form.quantity), min_quantity: Number(form.min_quantity), sale_price: Number(form.sale_price), cost_price: Number(form.cost_price) }; }
@@ -576,40 +729,34 @@ function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateSt
 function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
 function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
 function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
-function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Esperado</span><span className="content-strong mt-1 block font-medium">{formatMoney(session.expected_cash_amount)}</span></div><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Real / cierre</span><span className="content-strong mt-1 block font-medium">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="soft-card content-default mt-4 rounded-2xl px-4 py-3 text-sm">{session.notes}</div> : null}</div>; }
-function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="soft-card rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="card-surface rounded-2xl px-4 py-3"><div className="content-strong font-medium">{renderLabel(row)}</div><div className="content-muted text-sm">{renderMeta(row)}</div></div>)}</div></div>; }
-function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} - {sale.category}</div></div><div className="text-right"><div className="text-emerald-200 font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} uds</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
-
+function readLocalJson(key) { try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+function buildInitials(value) { return String(value).split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "AL"; }
+function sectionEyebrow(section) { return ({ home: "Visión general", inventory: "Gestión de inventario", treasury: "Finanzas y operaciones" })[section] ?? "Sistema local"; }
+function sectionTitle(section, branchName) { return ({ home: `Bienvenido, ${branchName}`, inventory: "Gestión de inventario", treasury: "Control de caja y reportes" })[section] ?? branchName; }
+function sectionDescription(section) { return ({ home: "Un inicio claro para revisar caja, inventario y alertas del local.", inventory: "Control total sobre existencias, costos, márgenes y altas por escáner.", treasury: "Seguimiento de caja diaria, ventas, cierres y reportes exportables." })[section] ?? "Panel principal"; }
 function handleText(setter) { return (event) => { const { name, value } = event.target; setter((current) => ({ ...current, [name]: value })); }; }
-function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[28px] p-5 shadow-panel backdrop-blur"><div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description text-sm">{description}</p></div>{action}</div>{children}</article>; }
-function SectionButton({ active, children, onClick }) { return <button type="button" onClick={onClick} className={`section-button rounded-full px-4 py-2 text-sm font-medium transition ${active ? "section-button-active" : "section-button-idle"}`}>{children}</button>; }
-function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
-function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"}`}>{error || message}</div>; }
-function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" }, processing: { label: "Procesando lectura", className: "border-sky-400/30 bg-sky-400/10 text-sky-100" }, success: { label: "Lectura confirmada", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" }, warning: { label: "Codigo nuevo", className: "border-amber-400/30 bg-amber-400/10 text-amber-100" }, error: { label: "Revisar lectura", className: "border-rose-400/30 bg-rose-400/10 text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "border-orange-400/30 bg-orange-400/10 text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${current.className}`}>{current.label}</div>; }
-function EmptyState({ children }) { return <div className="empty-state rounded-2xl border border-dashed px-4 py-10 text-center text-sm">{children}</div>; }
+
+function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[30px] p-5 shadow-panel backdrop-blur"><div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description mt-1 text-sm">{description}</p></div>{action}</div>{children}</article>; }
 function ThemeToggle({ theme, onChange }) { return <div className="theme-toggle inline-flex items-center gap-2 rounded-full px-2 py-2">{Object.entries(availableThemes).map(([value, config]) => <button key={value} type="button" onClick={() => onChange(value)} className={`theme-pill rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${theme === value ? "theme-pill-active" : "theme-pill-idle"}`}>{config.label}</button>)}</div>; }
-function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Codigo</th><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Categoria</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="inventory-code rounded-l-2xl px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-strong px-3 py-3 font-medium">{item.name}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "bg-rose-500/15 text-rose-200" : "bg-emerald-500/15 text-emerald-200"}`}>{item.quantity} / min {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20">Editar</button><button type="button" onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
-function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} - {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
+function SidebarLink({ item, active, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"}`}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span>{item.label}</span></button>; }
+function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
+function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`status-panel mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "status-panel-error" : "status-panel-success"}`}>{error || message}</div>; }
+function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "success-soft text-emerald-100" }, processing: { label: "Procesando lectura", className: "info-box text-sky-100" }, success: { label: "Lectura confirmada", className: "success-soft text-emerald-100" }, warning: { label: "Código nuevo", className: "warning-box text-amber-100" }, error: { label: "Revisar lectura", className: "danger-box text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "warning-box text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${current.className}`}>{current.label}</div>; }
+function EmptyState({ children }) { return <div className="empty-state rounded-2xl border border-dashed px-4 py-10 text-center text-sm">{children}</div>; }
 function CategorySelect({ label, value, categories, onChange }) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition">{categories.length === 0 ? <option value="General">General</option> : categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>; }
 const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><input ref={ref} {...props} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>; });
+function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Código</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="rounded-l-2xl px-3 py-3"><div className="content-strong font-medium">{item.name}</div><div className="content-muted text-xs">{item.category}</div></td><td className="inventory-code px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{item.quantity} / mínimo {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="section-button section-button-idle rounded-full px-3 py-1 text-xs font-medium transition">Editar</button><button type="button" onClick={() => onDelete(item)} className="danger-button rounded-full px-3 py-1 text-xs font-medium transition">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
+function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} · {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
+function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Esperado</span><span className="content-strong mt-1 block font-medium">{formatMoney(session.expected_cash_amount)}</span></div><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Real / cierre</span><span className="content-strong mt-1 block font-medium">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="soft-card content-default mt-4 rounded-2xl px-4 py-3 text-sm">{session.notes}</div> : null}</div>; }
+function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="soft-card rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="card-surface rounded-2xl px-4 py-3"><div className="content-strong font-medium">{renderLabel(row)}</div><div className="content-muted text-sm">{renderMeta(row)}</div></div>)}</div></div>; }
+function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} · {sale.category}</div></div><div className="text-right"><div className="content-strong font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} unidades</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
+function FeatureCard({ title, description }) { return <div className="feature-card rounded-2xl p-5"><div className="content-strong text-lg font-semibold">{title}</div><div className="auth-text mt-2 text-sm">{description}</div></div>; }
+function MiniStat({ label, value }) { return <div className="feature-card rounded-2xl p-5"><div className="panel-description text-xs uppercase tracking-[0.24em]">{label}</div><div className="content-strong mt-3 text-2xl font-semibold">{value}</div></div>; }
+function QuickAction({ title, description, onClick, emphasis = false }) { return <button type="button" onClick={onClick} className={`quick-action rounded-2xl p-5 text-left transition ${emphasis ? "quick-action-emphasis" : "quick-action-default"}`}><div className="content-strong text-lg font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div></button>; }
+function StatusRow({ label, value, strong = false }) { return <div className="soft-card flex items-center justify-between rounded-2xl px-4 py-3"><span className="panel-description text-sm">{label}</span><span className={`text-sm font-semibold ${strong ? "content-strong" : "content-default"}`}>{value}</span></div>; }
+function InsightCard({ title, value, helper }) { return <div className="soft-card rounded-2xl p-4"><div className="panel-description text-xs uppercase tracking-[0.2em]">{title}</div><div className="content-strong mt-2 text-xl font-semibold">{value}</div><div className="content-muted mt-2 text-sm">{helper}</div></div>; }
+function SummaryBadge({ label, value }) { return <div className="soft-card rounded-2xl px-4 py-3 text-right"><div className="panel-description text-[11px] uppercase tracking-[0.22em]">{label}</div><div className="content-strong mt-1 text-sm font-semibold">{value}</div></div>; }
+function MiniLine({ label, value }) { return <div className="flex items-center justify-between gap-3"><span className="panel-description text-sm">{label}</span><span className="content-strong text-sm font-semibold">{value}</span></div>; }
+function ActionCard({ title, description, subtle = false, children }) { return <div className={`action-card rounded-[28px] p-5 ${subtle ? "action-card-light" : "action-card-strong"}`}><div className="content-strong text-3xl font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div><div className="mt-5">{children}</div></div>; }
 
 export default App;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
