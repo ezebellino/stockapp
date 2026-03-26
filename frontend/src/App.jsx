@@ -13,7 +13,7 @@ const availableThemes = { dark: { label: "Oscuro" }, sepia: { label: "Claro sepi
 const navItems = [
   { id: "home", label: "Inicio", short: "IN" },
   { id: "inventory", label: "Inventario", short: "IV" },
-  { id: "treasury", label: "TesorerÌa", short: "TS" },
+  { id: "treasury", label: "Tesorer√≠a", short: "TS" },
 ];
 const scanLockMs = 1200;
 const accessStorageKey = "appstock-local-access";
@@ -143,11 +143,11 @@ function App() {
     event.preventDefault();
     const payload = { businessName: accessSetupForm.businessName.trim(), userName: accessSetupForm.userName.trim(), password: accessSetupForm.password };
     if (!payload.businessName || !payload.userName || payload.password.length < 4) {
-      setError("Complet· el nombre del local, el usuario y una clave de al menos 4 caracteres.");
+      setError("Complet√° el nombre del local, el usuario y una clave de al menos 4 caracteres.");
       return;
     }
     if (accessSetupForm.password !== accessSetupForm.confirmPassword) {
-      setError("La confirmaciÛn de la clave no coincide.");
+      setError("La confirmaci√≥n de la clave no coincide.");
       return;
     }
     window.localStorage.setItem(accessStorageKey, JSON.stringify(payload));
@@ -157,7 +157,7 @@ function App() {
     setAccessSetupForm(emptyAccessSetup);
     setSessionOpen(true);
     setError("");
-    setMessage(`Bienvenido a ${payload.businessName}. El acceso local quedÛ configurado.`);
+    setMessage(`Bienvenido a ${payload.businessName}. El acceso local qued√≥ configurado.`);
   }
 
   function handleLogin(event) {
@@ -178,7 +178,7 @@ function App() {
     setSessionOpen(false);
     setLoginForm((current) => ({ ...current, password: "" }));
     setError("");
-    setMessage("SesiÛn local cerrada correctamente.");
+    setMessage("Sesi√≥n local cerrada correctamente.");
   }
   async function submitProduct(event) {
     event.preventDefault();
@@ -212,11 +212,11 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCategoryName }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "No se pudo guardar la categorÌa.");
+      if (!response.ok) throw new Error(data.detail || "No se pudo guardar la categor√≠a.");
       setCategories((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
       setProductForm((current) => ({ ...current, category: data.name }));
       setNewCategoryName("");
-      setMessage(`CategorÌa creada: ${data.name}.`);
+      setMessage(`Categor√≠a creada: ${data.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -288,7 +288,7 @@ function App() {
   async function processScan() {
     const normalizedCode = scanCode.trim();
     if (!normalizedCode) {
-      setError("Escane· o escribÌ un cÛdigo antes de registrar.");
+      setError("Escane√° o escrib√≠ un c√≥digo antes de registrar.");
       setScanState("error");
       playTone("error");
       focusScanner();
@@ -316,7 +316,7 @@ function App() {
         setProductForm(nextProduct);
         setEditingId(null);
         setActiveSection("inventory");
-        setMessage("CÛdigo no encontrado. Complet· el alta r·pida para crear el producto.");
+        setMessage("C√≥digo no encontrado. Complet√° el alta r√°pida para crear el producto.");
         setScanState("warning");
         playTone("warning");
         return;
@@ -345,7 +345,7 @@ function App() {
   }
 
   async function handleDelete(item) {
-    if (!window.confirm(`øEliminar ${item.name}? Esta acciÛn no se puede deshacer.`)) return;
+    if (!window.confirm(`¬øEliminar ${item.name}? Esta acci√≥n no se puede deshacer.`)) return;
     setSaving(true);
     setError("");
     try {
@@ -406,13 +406,13 @@ function App() {
   function printTreasurySummary() {
     const printWindow = window.open("", "_blank", "width=980,height=720");
     if (!printWindow) {
-      setError("No se pudo abrir la vista de impresiÛn.");
+      setError("No se pudo abrir la vista de impresi√≥n.");
       return;
     }
     const periodLabel = treasuryFilter.startDate || treasuryFilter.endDate ? `${treasuryFilter.startDate || "inicio"} a ${treasuryFilter.endDate || "hoy"}` : "Jornada actual";
     const topProducts = reports.top_products.map((row) => `<li>${escapeHtml(row.name)}: ${row.quantity} unidades - ${formatMoney(row.revenue)}</li>`).join("");
     const sessions = cashSummary.recent_sessions.map((session) => `<tr><td>${session.id}</td><td>${escapeHtml(session.status)}</td><td>${escapeHtml(formatDateTime(session.opened_at))}</td><td>${escapeHtml(session.closed_at ? formatDateTime(session.closed_at) : "Abierta")}</td><td>${formatMoney(session.expected_cash_amount)}</td><td>${session.actual_cash_amount == null ? "-" : formatMoney(session.actual_cash_amount)}</td><td>${session.difference_amount == null ? "-" : formatMoney(session.difference_amount)}</td></tr>`).join("");
-    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Cierre de tesorerÌa</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#1f2937}h1,h2{margin:0 0 12px}section{margin-top:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid #d6d3d1;border-radius:16px;padding:16px;background:#faf7f2}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;font-size:12px}ul{padding-left:18px}small{color:#6b7280}</style></head><body><h1>Cierre de tesorerÌa</h1><small>PerÌodo: ${escapeHtml(periodLabel)}</small><section class="grid"><div class="card"><strong>RecaudaciÛn</strong><div>${formatMoney(cashSummary.today_revenue)}</div></div><div class="card"><strong>Ganancia</strong><div>${formatMoney(cashSummary.today_profit)}</div></div><div class="card"><strong>Ventas</strong><div>${cashSummary.today_sales_count}</div></div><div class="card"><strong>Caja esperada</strong><div>${formatMoney(cashSummary.expected_cash_now)}</div></div></section><section><h2>Productos m·s vendidos</h2><ul>${topProducts || "<li>Sin datos suficientes.</li>"}</ul></section><section><h2>Jornadas</h2><table><thead><tr><th>ID</th><th>Estado</th><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Real</th><th>Diferencia</th></tr></thead><tbody>${sessions || "<tr><td colspan=\"7\">Sin jornadas registradas.</td></tr>"}</tbody></table></section></body></html>`);
+    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Cierre de tesorer√≠a</title><style>body{font-family:Segoe UI,Arial,sans-serif;margin:32px;color:#1f2937}h1,h2{margin:0 0 12px}section{margin-top:24px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid #d6d3d1;border-radius:16px;padding:16px;background:#faf7f2}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #d6d3d1;padding:8px;text-align:left;font-size:12px}ul{padding-left:18px}small{color:#6b7280}</style></head><body><h1>Cierre de tesorer√≠a</h1><small>Per√≠odo: ${escapeHtml(periodLabel)}</small><section class="grid"><div class="card"><strong>Recaudaci√≥n</strong><div>${formatMoney(cashSummary.today_revenue)}</div></div><div class="card"><strong>Ganancia</strong><div>${formatMoney(cashSummary.today_profit)}</div></div><div class="card"><strong>Ventas</strong><div>${cashSummary.today_sales_count}</div></div><div class="card"><strong>Caja esperada</strong><div>${formatMoney(cashSummary.expected_cash_now)}</div></div></section><section><h2>Productos m√°s vendidos</h2><ul>${topProducts || "<li>Sin datos suficientes.</li>"}</ul></section><section><h2>Jornadas</h2><table><thead><tr><th>ID</th><th>Estado</th><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Real</th><th>Diferencia</th></tr></thead><tbody>${sessions || "<tr><td colspan=\"7\">Sin jornadas registradas.</td></tr>"}</tbody></table></section></body></html>`);
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
@@ -467,12 +467,12 @@ function App() {
         <div className="auth-grid mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.08fr_0.92fr]">
           <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
             <span className="eyebrow">Sistema local profesional</span>
-            <h1 className="auth-title mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Tu operaciÛn diaria, en espaÒol y lista para generar valor real.</h1>
-            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Configur· el acceso local una sola vez y empez· a trabajar con inventario, caja, reportes y control por esc·ner desde una interfaz clara, ordenada y profesional.</p>
+            <h1 className="auth-title mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Tu operaci√≥n diaria, en espa√±ol y lista para generar valor real.</h1>
+            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Configur√° el acceso local una sola vez y empez√° a trabajar con inventario, caja, reportes y control por esc√°ner desde una interfaz clara, ordenada y profesional.</p>
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
-              <FeatureCard title="Inicio claro" description="Un Home de bienvenida con mÈtricas y estado del local." />
-              <FeatureCard title="Inventario sÛlido" description="Altas, ediciÛn, esc·ner y alertas de stock bajo." />
-              <FeatureCard title="TesorerÌa ˙til" description="Caja diaria, ventas, reportes y exportaciÛn r·pida." />
+              <FeatureCard title="Inicio claro" description="Un Home de bienvenida con m√©tricas y estado del local." />
+              <FeatureCard title="Inventario s√≥lido" description="Altas, edici√≥n, esc√°ner y alertas de stock bajo." />
+              <FeatureCard title="Tesorer√≠a √∫til" description="Caja diaria, ventas, reportes y exportaci√≥n r√°pida." />
             </div>
           </section>
           <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
@@ -485,10 +485,10 @@ function App() {
               <ThemeToggle theme={theme} onChange={setTheme} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
-              <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: AlmacÈn San MartÌn" />
+              <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almac√©n San Mart√≠n" />
               <InputField label="Usuario local" name="userName" value={accessSetupForm.userName} onChange={handleText(setAccessSetupForm)} placeholder="Administrador" />
-              <InputField label="Clave local" name="password" type="password" value={accessSetupForm.password} onChange={handleText(setAccessSetupForm)} placeholder="MÌnimo 4 caracteres" />
-              <InputField label="Confirmar clave" name="confirmPassword" type="password" value={accessSetupForm.confirmPassword} onChange={handleText(setAccessSetupForm)} placeholder="RepetÌ la clave" />
+              <InputField label="Clave local" name="password" type="password" value={accessSetupForm.password} onChange={handleText(setAccessSetupForm)} placeholder="M√≠nimo 4 caracteres" />
+              <InputField label="Confirmar clave" name="confirmPassword" type="password" value={accessSetupForm.confirmPassword} onChange={handleText(setAccessSetupForm)} placeholder="Repet√≠ la clave" />
               <button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Ingresar al sistema</button>
             </form>
             <StatusPanel message={message} error={error} />
@@ -505,10 +505,10 @@ function App() {
           <section className="auth-showcase rounded-[34px] p-8 shadow-panel lg:p-12">
             <span className="eyebrow">Bienvenido a {branchName}</span>
             <h1 className="auth-title mt-4 text-4xl font-semibold leading-tight sm:text-6xl">Control total del negocio desde una sola cabina.</h1>
-            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Ingres· con tu acceso local para continuar con las ventas, el inventario, la caja diaria y los reportes inteligentes del comercio.</p>
+            <p className="auth-text mt-4 max-w-2xl text-base sm:text-lg">Ingres√° con tu acceso local para continuar con las ventas, el inventario, la caja diaria y los reportes inteligentes del comercio.</p>
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
               <MiniStat label="Productos activos" value={items.length} />
-              <MiniStat label="CategorÌas cargadas" value={categories.length} />
+              <MiniStat label="Categor√≠as cargadas" value={categories.length} />
               <MiniStat label="Movimientos recientes" value={movements.length} />
               <MiniStat label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
             </div>
@@ -518,13 +518,13 @@ function App() {
               <div>
                 <span className="eyebrow">Acceso local</span>
                 <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
-                <p className="auth-text mt-2 text-sm">ProtecciÛn local para esta PC. No requiere Internet ni cuentas externas.</p>
+                <p className="auth-text mt-2 text-sm">Protecci√≥n local para esta PC. No requiere Internet ni cuentas externas.</p>
               </div>
               <ThemeToggle theme={theme} onChange={setTheme} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleLogin}>
               <InputField label="Usuario" name="userName" value={loginForm.userName} onChange={handleText(setLoginForm)} />
-              <InputField label="Clave" name="password" type="password" value={loginForm.password} onChange={handleText(setLoginForm)} placeholder="Ingres· tu clave local" />
+              <InputField label="Clave" name="password" type="password" value={loginForm.password} onChange={handleText(setLoginForm)} placeholder="Ingres√° tu clave local" />
               <button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Entrar</button>
             </form>
             <StatusPanel message={message} error={error} />
@@ -554,15 +554,15 @@ function App() {
             {navItems.map((item) => <SidebarLink key={item.id} item={item} active={activeSection === item.id} onClick={() => setActiveSection(item.id)} />)}
           </nav>
           <div className="soft-card mt-8 rounded-[28px] p-5">
-            <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen r·pido</div>
+            <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen r√°pido</div>
             <div className="mt-4 space-y-4">
-              <MiniLine label="Ventas del perÌodo" value={formatMoney(cashSummary.today_revenue)} />
+              <MiniLine label="Ventas del per√≠odo" value={formatMoney(cashSummary.today_revenue)} />
               <MiniLine label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
               <MiniLine label="Stock bajo" value={lowStockItems.length} />
             </div>
           </div>
           <div className="mt-auto pt-8">
-            <button type="button" onClick={handleLogout} className="section-button section-button-idle w-full rounded-2xl px-4 py-3 text-sm font-semibold transition">Cerrar sesiÛn local</button>
+            <button type="button" onClick={handleLogout} className="section-button section-button-idle w-full rounded-2xl px-4 py-3 text-sm font-semibold transition">Cerrar sesi√≥n local</button>
           </div>
         </aside>
 
@@ -581,7 +581,7 @@ function App() {
                   <div className="panel-title mt-1 text-sm font-semibold capitalize">{currentDateLabel}</div>
                 </div>
               </div>
-              <div className="welcome-line text-sm">SesiÛn local activa para <strong>{accessConfig.userName}</strong> en <strong>{currentNavLabel}</strong>.</div>
+              <div className="welcome-line text-sm">Sesi√≥n local activa para <strong>{accessConfig.userName}</strong> en <strong>{currentNavLabel}</strong>.</div>
             </div>
           </header>
 
@@ -605,21 +605,21 @@ function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lo
       <section className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
         <Panel title={`Bienvenido a ${branchName}`} description="Tu punto de entrada para revisar el estado general del negocio, la caja y el inventario del local.">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="RecaudaciÛn" value={formatMoney(reports.total_revenue)} />
+            <MetricCard label="Recaudaci√≥n" value={formatMoney(reports.total_revenue)} />
             <MetricCard label="Ganancia" value={formatMoney(reports.total_profit)} />
             <MetricCard label="Valor de inventario" value={formatMoney(inventoryValue)} />
             <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <QuickAction title="Ir a Inventario" description="Altas, ediciÛn, esc·ner y stock." onClick={() => setActiveSection("inventory")} />
-            <QuickAction title="Abrir TesorerÌa" description="Caja diaria, ventas y reportes." onClick={() => setActiveSection("treasury")} />
-            <QuickAction title="Ver alertas" description={`${lowStockItems.length} productos en reposiciÛn.`} onClick={() => setActiveSection("inventory")} emphasis={lowStockItems.length > 0} />
+            <QuickAction title="Ir a Inventario" description="Altas, edici√≥n, esc√°ner y stock." onClick={() => setActiveSection("inventory")} />
+            <QuickAction title="Abrir Tesorer√≠a" description="Caja diaria, ventas y reportes." onClick={() => setActiveSection("treasury")} />
+            <QuickAction title="Ver alertas" description={`${lowStockItems.length} productos en reposici√≥n.`} onClick={() => setActiveSection("inventory")} emphasis={lowStockItems.length > 0} />
           </div>
         </Panel>
         <Panel title="Estado operativo" description="Resumen inmediato del local y del turno actual.">
           <div className="space-y-4">
             <StatusRow label="Caja" value={cashSummary.current_session ? "Abierta" : "Cerrada"} strong={Boolean(cashSummary.current_session)} />
-            <StatusRow label="Ventas del dÌa" value={cashSummary.today_sales_count} />
+            <StatusRow label="Ventas del d√≠a" value={cashSummary.today_sales_count} />
             <StatusRow label="Unidades vendidas" value={cashSummary.today_units_sold} />
             <StatusRow label="Costo inmovilizado" value={formatMoney(costValue)} />
           </div>
@@ -627,13 +627,13 @@ function renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lo
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="Actividad reciente" description="⁄ltimos movimientos relevantes del sistema local.">
-          {loading ? <EmptyState>Cargando actividadÖ</EmptyState> : latestMovements.length === 0 ? <EmptyState>TodavÌa no hay actividad registrada.</EmptyState> : <div className="space-y-3">{latestMovements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}
+        <Panel title="Actividad reciente" description="√öltimos movimientos relevantes del sistema local.">
+          {loading ? <EmptyState>Cargando actividad‚Ä¶</EmptyState> : latestMovements.length === 0 ? <EmptyState>Todav√≠a no hay actividad registrada.</EmptyState> : <div className="space-y-3">{latestMovements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}
         </Panel>
-        <Panel title="Inteligencia comercial" description="Lectura r·pida para decidir quÈ mirar primero.">
+        <Panel title="Inteligencia comercial" description="Lectura r√°pida para decidir qu√© mirar primero.">
           <div className="space-y-4">
-            <InsightCard title="Producto lÌder" value={topProduct ? topProduct.name : "Sin ventas todavÌa"} helper={topProduct ? `${topProduct.quantity} unidades vendidas` : "Registr· ventas para ver tendencias."} />
-            <InsightCard title="Productos con stock bajo" value={lowStockItems.length} helper={lowStockItems.length > 0 ? "Conviene revisar compras o reposiciÛn." : "Sin alertas crÌticas por ahora."} />
+            <InsightCard title="Producto l√≠der" value={topProduct ? topProduct.name : "Sin ventas todav√≠a"} helper={topProduct ? `${topProduct.quantity} unidades vendidas` : "Registr√° ventas para ver tendencias."} />
+            <InsightCard title="Productos con stock bajo" value={lowStockItems.length} helper={lowStockItems.length > 0 ? "Conviene revisar compras o reposici√≥n." : "Sin alertas cr√≠ticas por ahora."} />
             <InsightCard title="Margen estimado" value={formatMoney(reports.total_profit)} helper="Calculado sobre ventas registradas y costo cargado." />
           </div>
         </Panel>
@@ -646,45 +646,45 @@ function renderInventorySection(props) {
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Panel title="Buscador y esc·ner" description="Busc· productos, registr· ingresos y mantenÈ el foco listo para el lector de cÛdigos.">
+        <Panel title="Buscador y esc√°ner" description="Busc√° productos, registr√° ingresos y manten√© el foco listo para el lector de c√≥digos.">
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-4">
-              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, cÛdigo o categorÌa</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar productoÖ" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>
+              <label className="block"><span className="field-label mb-2 block text-sm font-medium">Buscar por nombre, c√≥digo o categor√≠a</span><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar producto‚Ä¶" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>
               <div className="grid gap-3 sm:grid-cols-[1fr_auto]"><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Actualizar datos</button><SummaryBadge label="Valor inventario" value={formatMoney(inventoryValue)} /></div>
             </div>
             <div className="card-surface rounded-[28px] p-5">
-              <div className="flex items-center justify-between gap-3"><h3 className="panel-title text-lg font-semibold">Ingreso por esc·ner</h3><ScannerStatus state={scanState} /></div>
+              <div className="flex items-center justify-between gap-3"><h3 className="panel-title text-lg font-semibold">Ingreso por esc√°ner</h3><ScannerStatus state={scanState} /></div>
               <form className="mt-4 space-y-4" onSubmit={submitScan}>
-                <InputField ref={scanInputRef} label="CÛdigo escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escane· o escribÌ el cÛdigo" autoComplete="off" />
+                <InputField ref={scanInputRef} label="C√≥digo escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escane√° o escrib√≠ el c√≥digo" autoComplete="off" />
                 <InputField label="Cantidad a ingresar" name="scanAmount" type="number" min="1" value={scanAmount} onChange={(event) => setScanAmount(event.target.value)} />
                 <button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar ingreso</button>
               </form>
-              {scanCandidate ? <div className="warning-box mt-4 rounded-2xl px-4 py-3 text-sm">CÛdigo nuevo detectado. Complet· el alta r·pida para guardarlo.</div> : null}
+              {scanCandidate ? <div className="warning-box mt-4 rounded-2xl px-4 py-3 text-sm">C√≥digo nuevo detectado. Complet√° el alta r√°pida para guardarlo.</div> : null}
             </div>
           </div>
         </Panel>
-        <Panel title={editingId ? "Editar producto" : "Nuevo producto"} description="Alta manual, ediciÛn y carga de categorÌas sin salir del panel principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
+        <Panel title={editingId ? "Editar producto" : "Nuevo producto"} description="Alta manual, edici√≥n y carga de categor√≠as sin salir del panel principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={submitProduct}>
-            <InputField label="CÛdigo de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
+            <InputField label="C√≥digo de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
             <InputField label="Nombre del producto" name="name" value={productForm.name} onChange={handleText(setProductForm)} />
-            <CategorySelect label="CategorÌa" value={productForm.category} categories={categories} onChange={(value) => setProductForm((current) => ({ ...current, category: value }))} />
+            <CategorySelect label="Categor√≠a" value={productForm.category} categories={categories} onChange={(value) => setProductForm((current) => ({ ...current, category: value }))} />
             <InputField label="Stock actual" name="quantity" type="number" min="0" value={productForm.quantity} onChange={handleText(setProductForm)} />
-            <InputField label="Stock mÌnimo" name="min_quantity" type="number" min="0" value={productForm.min_quantity} onChange={handleText(setProductForm)} />
+            <InputField label="Stock m√≠nimo" name="min_quantity" type="number" min="0" value={productForm.min_quantity} onChange={handleText(setProductForm)} />
             <InputField label="Precio de venta" name="sale_price" type="number" min="0" step="0.01" value={productForm.sale_price} onChange={handleText(setProductForm)} />
             <InputField label="Costo" name="cost_price" type="number" min="0" step="0.01" value={productForm.cost_price} onChange={handleText(setProductForm)} />
             <button type="submit" disabled={saving} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
           </form>
           <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
-            <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Cre· la primera categorÌa del local" : "Agregar nueva categorÌa"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
-            <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Guardar categorÌa</button>
+            <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Cre√° la primera categor√≠a del local" : "Agregar nueva categor√≠a"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
+            <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Guardar categor√≠a</button>
           </form>
         </Panel>
       </section>
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="Cat·logo de productos" description="Visualiz· inventario, edit· datos, busc· r·pido y elimin· productos obsoletos.">{loading ? <EmptyState>Cargando inventarioÖ</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}</Panel>
+        <Panel title="Cat√°logo de productos" description="Visualiz√° inventario, edit√° datos, busc√° r√°pido y elimin√° productos obsoletos.">{loading ? <EmptyState>Cargando inventario‚Ä¶</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}</Panel>
         <div className="space-y-6">
-          <Panel title="Estado de stock" description="Una vista r·pida para priorizar la reposiciÛn."><div className="grid gap-4 sm:grid-cols-2"><MetricCard label="CategorÌas" value={categories.length} /><MetricCard label="Stock bajo" value={lowStockItems.length} emphasis={lowStockItems.length > 0} /></div></Panel>
-          <Panel title="⁄ltimos movimientos" description="Entradas, ventas y ajustes m·s recientes del inventario.">{movements.length === 0 ? <EmptyState>TodavÌa no hay movimientos registrados.</EmptyState> : <div className="space-y-3">{movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}</Panel>
+          <Panel title="Estado de stock" description="Una vista r√°pida para priorizar la reposici√≥n."><div className="grid gap-4 sm:grid-cols-2"><MetricCard label="Categor√≠as" value={categories.length} /><MetricCard label="Stock bajo" value={lowStockItems.length} emphasis={lowStockItems.length > 0} /></div></Panel>
+          <Panel title="√öltimos movimientos" description="Entradas, ventas y ajustes m√°s recientes del inventario.">{movements.length === 0 ? <EmptyState>Todav√≠a no hay movimientos registrados.</EmptyState> : <div className="space-y-3">{movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}</div>}</Panel>
         </div>
       </section>
     </div>
@@ -696,25 +696,25 @@ function renderTreasurySection(props) {
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <Panel title="Control de caja" description="AbrÌ o cerr· el turno, registr· ventas y seguÌ el balance del dÌa en tiempo real.">
+        <Panel title="Control de caja" description="Abr√≠ o cerr√° el turno, registr√° ventas y segu√≠ el balance del d√≠a en tiempo real.">
           <div className="grid gap-4 lg:grid-cols-2">
-            <ActionCard title="Abrir caja" description="Inici· el turno con el saldo base verificado."><form className="space-y-3" onSubmit={submitCashOpen}><InputField label="Monto inicial" name="opening_amount" type="number" min="0" step="0.01" value={cashOpenForm.opening_amount} onChange={handleText(setCashOpenForm)} /><InputField label="Observaciones de apertura" name="notes" value={cashOpenForm.notes} onChange={handleText(setCashOpenForm)} /><button type="submit" disabled={saving || Boolean(cashSummary.current_session)} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Abrir caja</button></form></ActionCard>
-            <ActionCard title="Cerrar caja" description="Finaliz· el turno y registr· el monto real del cierre." subtle><form className="space-y-3" onSubmit={submitCashClose}><InputField label="Monto real al cierre" name="actual_cash_amount" type="number" min="0" step="0.01" value={cashCloseForm.actual_cash_amount} onChange={handleText(setCashCloseForm)} /><InputField label="Observaciones de cierre" name="notes" value={cashCloseForm.notes} onChange={handleText(setCashCloseForm)} /><button type="submit" disabled={saving || !cashSummary.current_session} className="secondary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Cerrar caja</button></form></ActionCard>
+            <ActionCard title="Abrir caja" description="Inici√° el turno con el saldo base verificado."><form className="space-y-3" onSubmit={submitCashOpen}><InputField label="Monto inicial" name="opening_amount" type="number" min="0" step="0.01" value={cashOpenForm.opening_amount} onChange={handleText(setCashOpenForm)} /><InputField label="Observaciones de apertura" name="notes" value={cashOpenForm.notes} onChange={handleText(setCashOpenForm)} /><button type="submit" disabled={saving || Boolean(cashSummary.current_session)} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Abrir caja</button></form></ActionCard>
+            <ActionCard title="Cerrar caja" description="Finaliz√° el turno y registr√° el monto real del cierre." subtle><form className="space-y-3" onSubmit={submitCashClose}><InputField label="Monto real al cierre" name="actual_cash_amount" type="number" min="0" step="0.01" value={cashCloseForm.actual_cash_amount} onChange={handleText(setCashCloseForm)} /><InputField label="Observaciones de cierre" name="notes" value={cashCloseForm.notes} onChange={handleText(setCashCloseForm)} /><button type="submit" disabled={saving || !cashSummary.current_session} className="secondary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Cerrar caja</button></form></ActionCard>
           </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} /><MetricCard label="RecaudaciÛn" value={formatMoney(cashSummary.today_revenue)} /><MetricCard label="Ganancia" value={formatMoney(cashSummary.today_profit)} /><MetricCard label="Ventas del perÌodo" value={cashSummary.today_sales_count} /></div>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} /><MetricCard label="Recaudaci√≥n" value={formatMoney(cashSummary.today_revenue)} /><MetricCard label="Ganancia" value={formatMoney(cashSummary.today_profit)} /><MetricCard label="Ventas del per√≠odo" value={cashSummary.today_sales_count} /></div>
         </Panel>
-        <Panel title="Registrar venta" description="Impacta stock, recaudaciÛn y margen estimado autom·ticamente."><form className="space-y-4" onSubmit={submitSale}><InputField label="CÛdigo de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} /><InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} /><InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} /><button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar venta</button></form></Panel>
+        <Panel title="Registrar venta" description="Impacta stock, recaudaci√≥n y margen estimado autom√°ticamente."><form className="space-y-4" onSubmit={submitSale}><InputField label="C√≥digo de barras" name="code" value={saleForm.code} onChange={handleText(setSaleForm)} /><InputField label="Cantidad" name="amount" type="number" min="1" value={saleForm.amount} onChange={handleText(setSaleForm)} /><InputField label="Precio unitario opcional" name="unit_price" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={handleText(setSaleForm)} /><button type="submit" disabled={saving} className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Registrar venta</button></form></Panel>
       </section>
       <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="space-y-6">
-          <Panel title="PerÌodo de an·lisis" description="Filtr· tesorerÌa por rango de fechas para revisar cierres y ventas." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={exportTreasuryCsv} disabled={saving} className="section-button section-button-active rounded-full px-4 py-2 text-sm font-semibold transition">Descargar CSV</button><button type="button" onClick={printTreasurySummary} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-semibold transition">Imprimir resumen</button></div>}><form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}><InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} /><InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} /><button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Aplicar filtro</button><button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button></form>{treasuryFilterActive ? <div className="info-box mt-4 rounded-2xl px-4 py-3 text-sm">Mostrando tesorerÌa desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}</Panel>
-          <Panel title="Jornadas registradas" description={treasuryFilterActive ? "Cierres y aperturas del perÌodo filtrado." : "⁄ltimos cierres y turnos de caja registrados."}>{cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese perÌodo.</EmptyState> : <div className="space-y-3">{cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}</div>}</Panel>
+          <Panel title="Per√≠odo de an√°lisis" description="Filtr√° tesorer√≠a por rango de fechas para revisar cierres y ventas." action={<div className="flex flex-wrap gap-2"><button type="button" onClick={exportTreasuryCsv} disabled={saving} className="section-button section-button-active rounded-full px-4 py-2 text-sm font-semibold transition">Descargar CSV</button><button type="button" onClick={printTreasurySummary} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-semibold transition">Imprimir resumen</button></div>}><form className="grid gap-4 md:grid-cols-2" onSubmit={applyTreasuryFilter}><InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} /><InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} /><button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Aplicar filtro</button><button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button></form>{treasuryFilterActive ? <div className="info-box mt-4 rounded-2xl px-4 py-3 text-sm">Mostrando tesorer√≠a desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.</div> : null}</Panel>
+          <Panel title="Jornadas registradas" description={treasuryFilterActive ? "Cierres y aperturas del per√≠odo filtrado." : "√öltimos cierres y turnos de caja registrados."}>{cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese per√≠odo.</EmptyState> : <div className="space-y-3">{cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}</div>}</Panel>
         </div>
         <div className="space-y-6">
-          <Panel title="Reportes inteligentes" description="Lectura r·pida de recaudaciÛn, ganancia y comportamiento de ventas.">
-            <div className="grid gap-4 lg:grid-cols-2"><ReportList title="Productos m·s vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} unidades ∑ ${formatMoney(row.revenue)}`} /><ReportList title="CategorÌas m·s vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} unidades ∑ ${formatMoney(row.revenue)}`} /></div>
-            <div className="soft-card mt-5 rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3><div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavÌa.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="success-soft rounded-2xl px-4 py-3 text-sm">{insight}</div>)}</div></div>
-            <div className="mt-5"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">⁄ltimas ventas del perÌodo</h3><div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese perÌodo.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div></div>
+          <Panel title="Reportes inteligentes" description="Lectura r√°pida de recaudaci√≥n, ganancia y comportamiento de ventas.">
+            <div className="grid gap-4 lg:grid-cols-2"><ReportList title="Productos m√°s vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} unidades ¬∑ ${formatMoney(row.revenue)}`} /><ReportList title="Categor√≠as m√°s vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} unidades ¬∑ ${formatMoney(row.revenue)}`} /></div>
+            <div className="soft-card mt-5 rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3><div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todav√≠a.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="success-soft rounded-2xl px-4 py-3 text-sm">{insight}</div>)}</div></div>
+            <div className="mt-5"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">√öltimas ventas del per√≠odo</h3><div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese per√≠odo.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div></div>
           </Panel>
         </div>
       </section>
@@ -731,9 +731,9 @@ function buildDateQuery(filter) { const params = new URLSearchParams(); if (filt
 function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
 function readLocalJson(key) { try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } }
 function buildInitials(value) { return String(value).split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "AL"; }
-function sectionEyebrow(section) { return ({ home: "VisiÛn general", inventory: "GestiÛn de inventario", treasury: "Finanzas y operaciones" })[section] ?? "Sistema local"; }
-function sectionTitle(section, branchName) { return ({ home: `Bienvenido, ${branchName}`, inventory: "GestiÛn de inventario", treasury: "Control de caja y reportes" })[section] ?? branchName; }
-function sectionDescription(section) { return ({ home: "Un inicio claro para revisar caja, inventario y alertas del local.", inventory: "Control total sobre existencias, costos, m·rgenes y altas por esc·ner.", treasury: "Seguimiento de caja diaria, ventas, cierres y reportes exportables." })[section] ?? "Panel principal"; }
+function sectionEyebrow(section) { return ({ home: "Visi√≥n general", inventory: "Gesti√≥n de inventario", treasury: "Finanzas y operaciones" })[section] ?? "Sistema local"; }
+function sectionTitle(section, branchName) { return ({ home: `Bienvenido, ${branchName}`, inventory: "Gesti√≥n de inventario", treasury: "Control de caja y reportes" })[section] ?? branchName; }
+function sectionDescription(section) { return ({ home: "Un inicio claro para revisar caja, inventario y alertas del local.", inventory: "Control total sobre existencias, costos, m√°rgenes y altas por esc√°ner.", treasury: "Seguimiento de caja diaria, ventas, cierres y reportes exportables." })[section] ?? "Panel principal"; }
 function handleText(setter) { return (event) => { const { name, value } = event.target; setter((current) => ({ ...current, [name]: value })); }; }
 
 function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[30px] p-5 shadow-panel backdrop-blur"><div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description mt-1 text-sm">{description}</p></div>{action}</div>{children}</article>; }
@@ -741,15 +741,15 @@ function ThemeToggle({ theme, onChange }) { return <div className="theme-toggle 
 function SidebarLink({ item, active, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"}`}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span>{item.label}</span></button>; }
 function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
 function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`status-panel mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "status-panel-error" : "status-panel-success"}`}>{error || message}</div>; }
-function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "success-soft text-emerald-100" }, processing: { label: "Procesando lectura", className: "info-box text-sky-100" }, success: { label: "Lectura confirmada", className: "success-soft text-emerald-100" }, warning: { label: "CÛdigo nuevo", className: "warning-box text-amber-100" }, error: { label: "Revisar lectura", className: "danger-box text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "warning-box text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${current.className}`}>{current.label}</div>; }
+function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "success-soft text-emerald-100" }, processing: { label: "Procesando lectura", className: "info-box text-sky-100" }, success: { label: "Lectura confirmada", className: "success-soft text-emerald-100" }, warning: { label: "C√≥digo nuevo", className: "warning-box text-amber-100" }, error: { label: "Revisar lectura", className: "danger-box text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "warning-box text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${current.className}`}>{current.label}</div>; }
 function EmptyState({ children }) { return <div className="empty-state rounded-2xl border border-dashed px-4 py-10 text-center text-sm">{children}</div>; }
 function CategorySelect({ label, value, categories, onChange }) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition">{categories.length === 0 ? <option value="General">General</option> : categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>; }
 const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><input ref={ref} {...props} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>; });
-function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Producto</th><th className="px-3 py-2">CÛdigo</th><th className="px-3 py-2">CategorÌa</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="rounded-l-2xl px-3 py-3"><div className="content-strong font-medium">{item.name}</div><div className="content-muted text-xs">{item.category}</div></td><td className="inventory-code px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{item.quantity} / mÌnimo {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="section-button section-button-idle rounded-full px-3 py-1 text-xs font-medium transition">Editar</button><button type="button" onClick={() => onDelete(item)} className="danger-button rounded-full px-3 py-1 text-xs font-medium transition">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
-function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} ∑ {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
+function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Producto</th><th className="px-3 py-2">C√≥digo</th><th className="px-3 py-2">Categor√≠a</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="rounded-l-2xl px-3 py-3"><div className="content-strong font-medium">{item.name}</div><div className="content-muted text-xs">{item.category}</div></td><td className="inventory-code px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{item.quantity} / m√≠nimo {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="section-button section-button-idle rounded-full px-3 py-1 text-xs font-medium transition">Editar</button><button type="button" onClick={() => onDelete(item)} className="danger-button rounded-full px-3 py-1 text-xs font-medium transition">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
+function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} ¬∑ {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
 function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "danger-box text-rose-100" : "success-soft text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Esperado</span><span className="content-strong mt-1 block font-medium">{formatMoney(session.expected_cash_amount)}</span></div><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Real / cierre</span><span className="content-strong mt-1 block font-medium">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="soft-card content-default mt-4 rounded-2xl px-4 py-3 text-sm">{session.notes}</div> : null}</div>; }
 function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="soft-card rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="card-surface rounded-2xl px-4 py-3"><div className="content-strong font-medium">{renderLabel(row)}</div><div className="content-muted text-sm">{renderMeta(row)}</div></div>)}</div></div>; }
-function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} ∑ {sale.category}</div></div><div className="text-right"><div className="content-strong font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} unidades</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
+function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} ¬∑ {sale.category}</div></div><div className="text-right"><div className="content-strong font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} unidades</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
 function FeatureCard({ title, description }) { return <div className="feature-card rounded-2xl p-5"><div className="content-strong text-lg font-semibold">{title}</div><div className="auth-text mt-2 text-sm">{description}</div></div>; }
 function MiniStat({ label, value }) { return <div className="feature-card rounded-2xl p-5"><div className="panel-description text-xs uppercase tracking-[0.24em]">{label}</div><div className="content-strong mt-3 text-2xl font-semibold">{value}</div></div>; }
 function QuickAction({ title, description, onClick, emphasis = false }) { return <button type="button" onClick={onClick} className={`quick-action rounded-2xl p-5 text-left transition ${emphasis ? "quick-action-emphasis" : "quick-action-default"}`}><div className="content-strong text-lg font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div></button>; }
