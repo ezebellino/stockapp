@@ -4,6 +4,10 @@ import sqlite3
 from pathlib import Path
 
 from .models import (
+    CashSession,
+    CashSessionClose,
+    CashSessionOpen,
+    DailyCashSummary,
     InventoryMovement,
     ReportSummary,
     RankedCategory,
@@ -64,6 +68,20 @@ class SQLiteStockRepository:
                     quantity_delta INTEGER NOT NULL,
                     reference TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cash_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    opening_amount REAL NOT NULL,
+                    actual_cash_amount REAL,
+                    difference_amount REAL,
+                    status TEXT NOT NULL DEFAULT 'OPEN',
+                    notes TEXT NOT NULL DEFAULT '',
+                    opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    closed_at TEXT
                 )
                 """
             )
@@ -379,6 +397,125 @@ class SQLiteStockRepository:
             ),
         )
 
+    def get_daily_cash_summary(self) -> DailyCashSummary:
+        current_session = self.get_current_cash_session()
+        with self._connect() as connection:
+            if current_session is None:
+                today_row = connection.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_sales_count,
+                        COALESCE(SUM(quantity), 0) AS total_units_sold,
+                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
+                    FROM sales
+                    WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
+                    """
+                ).fetchone()
+                expected_cash_now = today_row["total_revenue"]
+            else:
+                today_row = connection.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_sales_count,
+                        COALESCE(SUM(quantity), 0) AS total_units_sold,
+                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
+                    FROM sales
+                    WHERE created_at >= ?
+                    """,
+                    (current_session.opened_at,),
+                ).fetchone()
+                expected_cash_now = current_session.opening_amount + today_row["total_revenue"]
+
+            recent_rows = connection.execute(
+                """
+                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                FROM cash_sessions
+                ORDER BY id DESC
+                LIMIT 7
+                """
+            ).fetchall()
+
+        return DailyCashSummary(
+            current_session=current_session,
+            today_revenue=today_row["total_revenue"],
+            today_profit=today_row["total_profit"],
+            today_sales_count=today_row["total_sales_count"],
+            today_units_sold=today_row["total_units_sold"],
+            expected_cash_now=expected_cash_now,
+            recent_sessions=[self._to_cash_session(row) for row in recent_rows],
+        )
+
+    def get_current_cash_session(self) -> CashSession | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                FROM cash_sessions
+                WHERE status = 'OPEN'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        return self._with_expected_cash(row)
+
+    def open_cash_session(self, payload: CashSessionOpen) -> CashSession:
+        if self.get_current_cash_session() is not None:
+            raise ValueError("Ya existe una caja abierta.")
+
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO cash_sessions (opening_amount, notes, status)
+                VALUES (?, ?, 'OPEN')
+                """,
+                (payload.opening_amount, payload.notes.strip()),
+            )
+            connection.commit()
+            row = connection.execute(
+                """
+                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                FROM cash_sessions
+                WHERE id = ?
+                """,
+                (cursor.lastrowid,),
+            ).fetchone()
+        return self._with_expected_cash(row)
+
+    def close_cash_session(self, payload: CashSessionClose) -> CashSession:
+        current_session = self.get_current_cash_session()
+        if current_session is None:
+            raise ValueError("No hay una caja abierta para cerrar.")
+
+        difference_amount = payload.actual_cash_amount - current_session.expected_cash_amount
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE cash_sessions
+                SET actual_cash_amount = ?, difference_amount = ?, notes = ?, status = 'CLOSED', closed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    payload.actual_cash_amount,
+                    difference_amount,
+                    payload.notes.strip(),
+                    current_session.id,
+                ),
+            )
+            connection.commit()
+            row = connection.execute(
+                """
+                SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
+                FROM cash_sessions
+                WHERE id = ?
+                """,
+                (current_session.id,),
+            ).fetchone()
+        return self._with_expected_cash(row)
+
     def _seed_if_empty(self) -> None:
         with self._connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS total FROM items").fetchone()
@@ -432,6 +569,30 @@ class SQLiteStockRepository:
             (item_id, code, item_name, movement_type, quantity_delta, reference),
         )
 
+    def _with_expected_cash(self, row: sqlite3.Row) -> CashSession:
+        with self._connect() as connection:
+            revenue_row = connection.execute(
+                """
+                SELECT COALESCE(SUM(quantity * unit_price), 0) AS total_revenue
+                FROM sales
+                WHERE created_at >= ?
+                AND (? IS NULL OR created_at <= ?)
+                """,
+                (row["opened_at"], row["closed_at"], row["closed_at"]),
+            ).fetchone()
+        expected_cash_amount = row["opening_amount"] + revenue_row["total_revenue"]
+        return CashSession(
+            id=row["id"],
+            opening_amount=row["opening_amount"],
+            expected_cash_amount=expected_cash_amount,
+            actual_cash_amount=row["actual_cash_amount"],
+            difference_amount=row["difference_amount"],
+            status=row["status"],
+            notes=row["notes"],
+            opened_at=row["opened_at"],
+            closed_at=row["closed_at"],
+        )
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
@@ -479,6 +640,20 @@ class SQLiteStockRepository:
             quantity_delta=row["quantity_delta"],
             reference=row["reference"],
             created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _to_cash_session(row: sqlite3.Row) -> CashSession:
+        return CashSession(
+            id=row["id"],
+            opening_amount=row["opening_amount"],
+            expected_cash_amount=row["opening_amount"],
+            actual_cash_amount=row["actual_cash_amount"],
+            difference_amount=row["difference_amount"],
+            status=row["status"],
+            notes=row["notes"],
+            opened_at=row["opened_at"],
+            closed_at=row["closed_at"],
         )
 
     @staticmethod

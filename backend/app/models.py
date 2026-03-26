@@ -58,6 +58,28 @@ class InventoryMovement(BaseModel):
     created_at: str
 
 
+class CashSessionOpen(BaseModel):
+    opening_amount: float = Field(..., ge=0)
+    notes: str = Field(default="", max_length=240)
+
+
+class CashSessionClose(BaseModel):
+    actual_cash_amount: float = Field(..., ge=0)
+    notes: str = Field(default="", max_length=240)
+
+
+class CashSession(BaseModel):
+    id: int
+    opening_amount: float
+    expected_cash_amount: float
+    actual_cash_amount: float | None = None
+    difference_amount: float | None = None
+    status: str
+    notes: str
+    opened_at: str
+    closed_at: str | None = None
+
+
 class RankedProduct(BaseModel):
     name: str
     quantity: int
@@ -84,3 +106,13 @@ class ReportSummary(BaseModel):
     top_categories: list[RankedCategory]
     recent_sales: list[SaleRecord]
     insights: list[str]
+
+
+class DailyCashSummary(BaseModel):
+    current_session: CashSession | None = None
+    today_revenue: float
+    today_profit: float
+    today_sales_count: int
+    today_units_sold: int
+    expected_cash_now: float
+    recent_sessions: list[CashSession]
