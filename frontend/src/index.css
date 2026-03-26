@@ -141,3 +141,17 @@ button, input, select { font: inherit; }
 .shortcut-hint { border: 1px dashed var(--panel-border); background: var(--soft-bg); color: var(--muted); }
 .onboarding-grid .quick-action { min-height: 100%; }
 :root[data-theme="sepia"] .shortcut-hint { color: #7a6554; }
+
+.inventory-health { background: linear-gradient(135deg, var(--soft-bg), rgba(15, 76, 99, 0.12)); border: 1px solid var(--panel-border); }
+.health-pill { background: var(--soft-strong); color: var(--title); }
+.progress-track { background: rgba(255, 255, 255, 0.08); }
+.progress-bar { background: linear-gradient(90deg, #22c55e, #14b8a6); }
+.daily-sales-chart { min-height: 100%; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 14px; align-items: end; min-height: 280px; }
+.chart-column { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.chart-meta, .chart-label, .chart-foot { color: var(--muted); }
+.chart-bar-wrap { display: flex; align-items: end; justify-content: center; width: 100%; min-height: 190px; padding: 10px 0; border-radius: 22px; background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); border: 1px solid var(--panel-border); }
+.chart-bar { width: min(42px, 100%); border-radius: 18px 18px 10px 10px; background: linear-gradient(180deg, #60a5fa, var(--accent)); box-shadow: 0 12px 24px rgba(var(--shadow-color), 0.18); }
+:root[data-theme="sepia"] .inventory-health { background: linear-gradient(135deg, rgba(255, 248, 240, 0.92), rgba(195, 227, 215, 0.46)); }
+:root[data-theme="sepia"] .progress-track { background: rgba(143, 111, 91, 0.12); }
+:root[data-theme="sepia"] .chart-bar-wrap { background: linear-gradient(180deg, rgba(255,255,255,0.72), rgba(241, 228, 214, 0.72)); }
