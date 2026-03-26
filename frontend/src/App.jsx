@@ -7,6 +7,10 @@ const emptySaleForm = { code: "", amount: 1, unit_price: "" };
 const emptyCashOpenForm = { opening_amount: "", notes: "" };
 const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
 const emptyTreasuryFilter = { startDate: "", endDate: "" };
+const availableThemes = {
+  dark: { label: "Oscuro" },
+  sepia: { label: "Claro sepia" },
+};
 const scanLockMs = 1200;
 
 function App() {
@@ -21,6 +25,7 @@ function App() {
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
   const [cashCloseForm, setCashCloseForm] = useState(emptyCashCloseForm);
   const [treasuryFilter, setTreasuryFilter] = useState(emptyTreasuryFilter);
+  const [theme, setTheme] = useState("dark");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [scanCode, setScanCode] = useState("");
   const [scanAmount, setScanAmount] = useState(1);
@@ -407,15 +412,15 @@ function App() {
   });
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.22),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.14),_transparent_22%),#020617] px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
+    <main className="app-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <section className="overflow-hidden rounded-[30px] border border-white/10 bg-slate-900/75 shadow-panel backdrop-blur">
+        <section className="hero-shell overflow-hidden rounded-[30px] shadow-panel backdrop-blur">
           <div className="grid gap-6 px-6 py-7 lg:grid-cols-[1.4fr_1fr]">
             <div className="space-y-4">
               <span className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">AppStock local</span>
               <div className="space-y-3">
-                <h1 className="max-w-3xl text-3xl font-semibold leading-tight text-white sm:text-5xl">Stock, ventas, tesoreria y trazabilidad en una sola cabina.</h1>
-                <p className="max-w-3xl text-sm text-slate-300 sm:text-base">Ahora las categorias quedan persistidas para elegirlas rapido y poder sumar nuevas a medida que el negocio crece.</p>
+                <h1 className="content-strong max-w-3xl text-3xl font-semibold leading-tight sm:text-5xl">Stock, ventas, tesoreria y trazabilidad en una sola cabina.</h1>
+                <p className="content-muted max-w-3xl text-sm sm:text-base">Ahora las categorias quedan persistidas para elegirlas rapido y poder sumar nuevas a medida que el negocio crece.</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <SectionButton active={activeSection === "inventory"} onClick={() => setActiveSection("inventory")}>Inventario</SectionButton>
@@ -435,7 +440,7 @@ function App() {
           <Panel title="Ingreso por escaner" description="Autoenfoque constante, enter del lector y proteccion contra doble lectura." action={<button type="button" onClick={focusScanner} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-200 transition hover:bg-sky-500/20">Enfocar</button>}>
             <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_auto]">
               <ScannerStatus state={scanState} />
-              <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-xs uppercase tracking-[0.2em] text-slate-300">Enter del lector: envio inmediato</div>
+              <div className="card-surface content-muted rounded-2xl px-4 py-3 text-xs uppercase tracking-[0.2em]">Enter del lector: envio inmediato</div>
             </div>
             <form className="space-y-4" onSubmit={submitScan}>
               <InputField ref={scanInputRef} label="Codigo escaneado" name="scanCode" value={scanCode} onChange={(event) => setScanCode(event.target.value)} onKeyDown={async (event) => { if (event.key === "Enter") { event.preventDefault(); await processScan(); } }} placeholder="Escanea o escribe el codigo" autoComplete="off" />
@@ -446,7 +451,7 @@ function App() {
             {scanCandidate ? <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">Codigo nuevo detectado: {scanCandidate.code}. Completa el formulario y guardalo.</div> : null}
           </Panel>
 
-          <Panel title={editingId ? "Editar producto" : "Alta manual de producto"} description="Crea, corrige o completa productos sin salir de la pantalla principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10">Limpiar</button> : null}>
+          <Panel title={editingId ? "Editar producto" : "Alta manual de producto"} description="Crea, corrige o completa productos sin salir de la pantalla principal." action={(editingId || scanCandidate) ? <button type="button" onClick={resetProductEditor} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Limpiar</button> : null}>
             <form className="grid gap-4 md:grid-cols-2" onSubmit={submitProduct}>
               <InputField label="Codigo de barras" name="code" value={productForm.code} onChange={handleText(setProductForm)} />
               <InputField label="Nombre" name="name" value={productForm.name} onChange={handleText(setProductForm)} />
@@ -457,20 +462,20 @@ function App() {
               <InputField label="Costo" name="cost_price" type="number" min="0" step="0.01" value={productForm.cost_price} onChange={handleText(setProductForm)} />
               <button type="submit" disabled={saving} className="md:col-span-2 rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">{editingId ? "Actualizar producto" : "Guardar producto"}</button>
             </form>
-            <form className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 sm:flex-row" onSubmit={submitCategory}>
-              <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Crea la primera categoria del local" : "Agregar nueva categoria"} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" />
+            <form className="soft-card mt-4 flex flex-col gap-3 rounded-2xl p-4 sm:flex-row" onSubmit={submitCategory}>
+              <input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} placeholder={categories.length === 0 ? "Crea la primera categoria del local" : "Agregar nueva categoria"} className="field-input flex-1 rounded-2xl px-4 py-3 text-sm outline-none transition" />
               <button type="submit" disabled={saving || newCategoryName.trim().length < 2} className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60">Guardar categoria</button>
             </form>
             {categories.length === 0 ? <div className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">Todavia no hay categorias. Carga la primera para dejar el alta de productos lista para el local.</div> : null}
           </Panel>
         </section>        {activeSection === "inventory" ? (
           <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <Panel title="Control de stock" description="Visualiza inventario, edita datos, busca por codigo o nombre y elimina productos obsoletos." action={<div className="flex flex-wrap gap-3"><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar por codigo, nombre o categoria" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-400/60" /><button type="button" onClick={refreshAll} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10">Recargar</button></div>}>
+            <Panel title="Control de stock" description="Visualiza inventario, edita datos, busca por codigo o nombre y elimina productos obsoletos." action={<div className="flex flex-wrap gap-3"><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar por codigo, nombre o categoria" className="field-input rounded-full px-4 py-2 text-sm outline-none transition" /><button type="button" onClick={refreshAll} className="section-button section-button-idle rounded-full px-4 py-2 text-sm font-medium transition">Recargar</button></div>}>
               {loading ? <EmptyState>Cargando inventario...</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} />}
             </Panel>
             <div className="space-y-6">
               <Panel title="Categorias disponibles" description="Quedan guardadas para reutilizarlas en cada alta de producto.">
-                {categories.length === 0 ? <EmptyState>Todavia no hay categorias cargadas.</EmptyState> : categories.map((category) => <div key={category.id} className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-100">{category.name}</div>)}
+                {categories.length === 0 ? <EmptyState>Todavia no hay categorias cargadas.</EmptyState> : categories.map((category) => <div key={category.id} className="card-surface content-default rounded-2xl px-4 py-3 text-sm">{category.name}</div>)}
               </Panel>
               <Panel title="Historial de movimientos" description="Ultimas entradas, ventas y ajustes sobre el inventario.">
                 {movements.length === 0 ? <EmptyState>Todavia no hay movimientos registrados.</EmptyState> : movements.map((movement) => <MovementCard key={movement.id} movement={movement} />)}
@@ -521,7 +526,7 @@ function App() {
                   <InputField label="Desde" name="startDate" type="date" value={treasuryFilter.startDate} onChange={handleText(setTreasuryFilter)} />
                   <InputField label="Hasta" name="endDate" type="date" value={treasuryFilter.endDate} onChange={handleText(setTreasuryFilter)} />
                   <button type="submit" disabled={saving} className="rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60">Aplicar filtro</button>
-                  <button type="button" onClick={clearTreasuryFilter} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10">Ver todo</button>
+                  <button type="button" onClick={clearTreasuryFilter} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver todo</button>
                   <button type="button" onClick={exportTreasuryCsv} disabled={saving} className="rounded-2xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">Descargar CSV</button>
                   <button type="button" onClick={printTreasurySummary} className="rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/20">Imprimir resumen</button>
                 </form>
@@ -535,7 +540,7 @@ function App() {
                   <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
                 </div>
                 <div className="mt-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Jornadas registradas</h3>
+                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Jornadas registradas</h3>
                   <div className="mt-3 space-y-3">
                     {cashSummary.recent_sessions.length === 0 ? <EmptyState>No hay jornadas en ese periodo.</EmptyState> : cashSummary.recent_sessions.map((session) => <CashSessionCard key={session.id} session={session} />)}
                   </div>
@@ -546,12 +551,12 @@ function App() {
                   <ReportList title="Productos mas vendidos" rows={reports.top_products} renderLabel={(row) => row.name} renderMeta={(row) => `${row.quantity} uds - ${formatMoney(row.revenue)}`} />
                   <ReportList title="Categorias mas vendidas" rows={reports.top_categories} renderLabel={(row) => row.category} renderMeta={(row) => `${row.quantity} uds - ${formatMoney(row.revenue)}`} />
                 </div>
-                <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Insights</h3>
+                <div className="soft-card mt-5 rounded-2xl p-4">
+                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Insights</h3>
                   <div className="mt-3 space-y-2">{reports.insights.length === 0 ? <EmptyState>Sin insights todavia.</EmptyState> : reports.insights.map((insight) => <div key={insight} className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-50">{insight}</div>)}</div>
                 </div>
                 <div className="mt-5">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">Ultimas ventas del periodo</h3>
+                  <h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">Ultimas ventas del periodo</h3>
                   <div className="mt-3 space-y-3">{reports.recent_sales.length === 0 ? <EmptyState>No hay ventas en ese periodo.</EmptyState> : reports.recent_sales.map((sale) => <RecentSaleCard key={sale.id} sale={sale} />)}</div>
                 </div>
               </Panel>
@@ -571,23 +576,30 @@ function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateSt
 function formatDateTime(value) { return new Date(value).toLocaleString("es-AR"); }
 function buildDateQuery(filter) { const params = new URLSearchParams(); if (filter.startDate) params.set("start_date", filter.startDate); if (filter.endDate) params.set("end_date", filter.endDate); const query = params.toString(); return query ? `?${query}` : ""; }
 function escapeHtml(value) { return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("\"", "&quot;").replaceAll("'", "&#39;"); }
-function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Esperado</span><span className="mt-1 block font-medium text-white">{formatMoney(session.expected_cash_amount)}</span></div><div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><span className="block text-xs uppercase tracking-[0.18em] text-slate-500">Real / cierre</span><span className="mt-1 block font-medium text-white">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{session.notes}</div> : null}</div>; }
-function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3"><div className="font-medium text-white">{renderLabel(row)}</div><div className="text-sm text-slate-400">{renderMeta(row)}</div></div>)}</div></div>; }
-function RecentSaleCard({ sale }) { return <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{sale.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{sale.code} - {sale.category}</div></div><div className="text-right"><div className="font-medium text-emerald-200">{formatMoney(sale.revenue)}</div><div className="text-xs text-slate-400">{sale.quantity} uds</div></div></div><div className="mt-3 text-xs uppercase tracking-[0.18em] text-slate-500">{formatDateTime(sale.created_at)}</div></div>; }
+function CashSessionCard({ session }) { const diff = Number(session.difference_amount || 0); const closed = session.closed_at ? formatDateTime(session.closed_at) : "Turno en curso"; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{session.status === "OPEN" ? "Caja abierta" : "Caja cerrada"}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">Apertura: {formatDateTime(session.opened_at)}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${diff < 0 ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{session.status === "OPEN" ? formatMoney(session.expected_cash_amount) : `${diff >= 0 ? "+" : ""}${formatMoney(diff)}`}</div></div><div className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Esperado</span><span className="content-strong mt-1 block font-medium">{formatMoney(session.expected_cash_amount)}</span></div><div className="soft-card rounded-2xl px-4 py-3"><span className="content-faint block text-xs uppercase tracking-[0.18em]">Real / cierre</span><span className="content-strong mt-1 block font-medium">{session.actual_cash_amount == null ? closed : formatMoney(session.actual_cash_amount)}</span></div></div>{session.notes ? <div className="soft-card content-default mt-4 rounded-2xl px-4 py-3 text-sm">{session.notes}</div> : null}</div>; }
+function ReportList({ title, rows, renderLabel, renderMeta }) { return <div className="soft-card rounded-2xl p-4"><h3 className="panel-description text-sm font-semibold uppercase tracking-[0.2em]">{title}</h3><div className="mt-3 space-y-3">{rows.length === 0 ? <EmptyState>Sin datos suficientes.</EmptyState> : rows.map((row) => <div key={renderLabel(row)} className="card-surface rounded-2xl px-4 py-3"><div className="content-strong font-medium">{renderLabel(row)}</div><div className="content-muted text-sm">{renderMeta(row)}</div></div>)}</div></div>; }
+function RecentSaleCard({ sale }) { return <div className="card-surface rounded-2xl px-4 py-3"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{sale.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{sale.code} - {sale.category}</div></div><div className="text-right"><div className="text-emerald-200 font-medium">{formatMoney(sale.revenue)}</div><div className="content-muted text-xs">{sale.quantity} uds</div></div></div><div className="content-faint mt-3 text-xs uppercase tracking-[0.18em]">{formatDateTime(sale.created_at)}</div></div>; }
 
 function handleText(setter) { return (event) => { const { name, value } = event.target; setter((current) => ({ ...current, [name]: value })); }; }
-function Panel({ title, description, action, children }) { return <article className="rounded-[28px] border border-white/10 bg-slate-900/75 p-5 shadow-panel backdrop-blur"><div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold text-white">{title}</h2><p className="text-sm text-slate-400">{description}</p></div>{action}</div>{children}</article>; }
-function SectionButton({ active, children, onClick }) { return <button type="button" onClick={onClick} className={`rounded-full px-4 py-2 text-sm font-medium transition ${active ? "bg-white text-slate-950" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}>{children}</button>; }
-function MetricCard({ label, value, emphasis = false }) { return <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"><div className="text-xs uppercase tracking-[0.22em] text-slate-400">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "text-rose-300" : "text-white"}`}>{value}</div></div>; }
+function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[28px] p-5 shadow-panel backdrop-blur"><div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description text-sm">{description}</p></div>{action}</div>{children}</article>; }
+function SectionButton({ active, children, onClick }) { return <button type="button" onClick={onClick} className={`section-button rounded-full px-4 py-2 text-sm font-medium transition ${active ? "section-button-active" : "section-button-idle"}`}>{children}</button>; }
+function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
 function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "border-rose-400/30 bg-rose-500/10 text-rose-100" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"}`}>{error || message}</div>; }
 function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" }, processing: { label: "Procesando lectura", className: "border-sky-400/30 bg-sky-400/10 text-sky-100" }, success: { label: "Lectura confirmada", className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100" }, warning: { label: "Codigo nuevo", className: "border-amber-400/30 bg-amber-400/10 text-amber-100" }, error: { label: "Revisar lectura", className: "border-rose-400/30 bg-rose-400/10 text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "border-orange-400/30 bg-orange-400/10 text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl border px-4 py-3 text-sm font-medium ${current.className}`}>{current.label}</div>; }
-function EmptyState({ children }) { return <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-slate-400">{children}</div>; }
-function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="text-xs uppercase tracking-[0.2em] text-slate-400"><tr><th className="px-3 py-2">Codigo</th><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Categoria</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="bg-slate-950/75 text-slate-200"><td className="rounded-l-2xl px-3 py-3 font-mono text-xs text-sky-200">{item.code}</td><td className="px-3 py-3 font-medium text-white">{item.name}</td><td className="px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "bg-rose-500/15 text-rose-200" : "bg-emerald-500/15 text-emerald-200"}`}>{item.quantity} / min {item.min_quantity}</span></td><td className="px-3 py-3">{formatMoney(item.sale_price)}</td><td className="px-3 py-3">{formatMoney(item.cost_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20">Editar</button><button type="button" onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
-function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-center justify-between gap-3"><div><div className="font-medium text-white">{movement.item_name}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-400">{movement.movement_type} - {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
-function CategorySelect({ label, value, categories, onChange }) { return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20">{categories.length === 0 ? <option value="General">General</option> : categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>; }
-const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="mb-2 block text-sm font-medium text-slate-200">{label}</span><input ref={ref} {...props} className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20" /></label>; });
+function EmptyState({ children }) { return <div className="empty-state rounded-2xl border border-dashed px-4 py-10 text-center text-sm">{children}</div>; }
+function ThemeToggle({ theme, onChange }) { return <div className="theme-toggle inline-flex items-center gap-2 rounded-full px-2 py-2">{Object.entries(availableThemes).map(([value, config]) => <button key={value} type="button" onClick={() => onChange(value)} className={`theme-pill rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${theme === value ? "theme-pill-active" : "theme-pill-idle"}`}>{config.label}</button>)}</div>; }
+function InventoryTable({ items, onEdit, onDelete }) { return <div className="overflow-x-auto"><table className="inventory-table min-w-full border-separate border-spacing-y-2 text-left text-sm"><thead className="content-muted text-xs uppercase tracking-[0.2em]"><tr><th className="px-3 py-2">Codigo</th><th className="px-3 py-2">Producto</th><th className="px-3 py-2">Categoria</th><th className="px-3 py-2">Stock</th><th className="px-3 py-2">Venta</th><th className="px-3 py-2">Costo</th><th className="px-3 py-2">Acciones</th></tr></thead><tbody>{items.map((item) => { const isLow = item.quantity <= item.min_quantity; return <tr key={item.id} className="inventory-row"><td className="inventory-code rounded-l-2xl px-3 py-3 font-mono text-xs">{item.code}</td><td className="content-strong px-3 py-3 font-medium">{item.name}</td><td className="content-default px-3 py-3">{item.category}</td><td className="px-3 py-3"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${isLow ? "bg-rose-500/15 text-rose-200" : "bg-emerald-500/15 text-emerald-200"}`}>{item.quantity} / min {item.min_quantity}</span></td><td className="content-default px-3 py-3">{formatMoney(item.sale_price)}</td><td className="content-default px-3 py-3">{formatMoney(item.cost_price)}</td><td className="rounded-r-2xl px-3 py-3"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => onEdit(item)} className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20">Editar</button><button type="button" onClick={() => onDelete(item)} className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-100 transition hover:bg-rose-500/20">Eliminar</button></div></td></tr>; })}</tbody></table></div>; }
+function MovementCard({ movement }) { const isOut = movement.quantity_delta < 0; return <div className="card-surface rounded-2xl p-4"><div className="flex items-center justify-between gap-3"><div><div className="content-strong font-medium">{movement.item_name}</div><div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type} - {movement.reference}</div></div><div className={`rounded-full px-3 py-1 text-xs font-semibold ${isOut ? "bg-rose-500/15 text-rose-100" : "bg-emerald-500/15 text-emerald-100"}`}>{isOut ? movement.quantity_delta : `+${movement.quantity_delta}`}</div></div></div>; }
+function CategorySelect({ label, value, categories, onChange }) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition">{categories.length === 0 ? <option value="General">General</option> : categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}</select></label>; }
+const InputField = forwardRef(function InputField({ label, ...props }, ref) { return <label className="block"><span className="field-label mb-2 block text-sm font-medium">{label}</span><input ref={ref} {...props} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" /></label>; });
 
 export default App;
+
+
+
+
+
+
 
 
 

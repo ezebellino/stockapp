@@ -5,19 +5,184 @@
 :root {
   color-scheme: dark;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  --app-text: #e2e8f0;
+  --app-bg: radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 28%), radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.12), transparent 24%), #020617;
+  --hero-bg: rgba(15, 23, 42, 0.78);
+  --hero-border: rgba(255, 255, 255, 0.1);
+  --panel-bg: rgba(15, 23, 42, 0.78);
+  --panel-border: rgba(255, 255, 255, 0.1);
+  --title: #ffffff;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --faint: #64748b;
+  --field-bg: rgba(2, 6, 23, 0.82);
+  --field-border: rgba(255, 255, 255, 0.12);
+  --field-text: #ffffff;
+  --field-placeholder: #64748b;
+  --soft-bg: rgba(255, 255, 255, 0.05);
+  --card-bg: rgba(2, 6, 23, 0.58);
+  --row-bg: rgba(2, 6, 23, 0.75);
+  --code-text: #7dd3fc;
+  --shadow-color: 15, 23, 42;
+  --toggle-bg: rgba(255, 255, 255, 0.06);
+  --toggle-border: rgba(255, 255, 255, 0.12);
+  --toggle-active-bg: #ffffff;
+  --toggle-active-text: #0f172a;
+  --toggle-idle-text: #cbd5e1;
+}
+
+:root[data-theme="sepia"] {
+  color-scheme: light;
+  --app-text: #5f4637;
+  --app-bg: radial-gradient(circle at top left, rgba(238, 196, 167, 0.55), transparent 25%), radial-gradient(circle at bottom right, rgba(191, 228, 205, 0.42), transparent 24%), #f3e7d7;
+  --hero-bg: rgba(255, 249, 240, 0.82);
+  --hero-border: rgba(170, 132, 105, 0.18);
+  --panel-bg: rgba(255, 251, 245, 0.82);
+  --panel-border: rgba(172, 139, 114, 0.18);
+  --title: #684c3d;
+  --text: #6b4f40;
+  --muted: #8f7564;
+  --faint: #a18878;
+  --field-bg: rgba(255, 248, 240, 0.96);
+  --field-border: rgba(196, 168, 144, 0.36);
+  --field-text: #6a4d3c;
+  --field-placeholder: #b19683;
+  --soft-bg: rgba(239, 223, 208, 0.48);
+  --card-bg: rgba(255, 247, 240, 0.9);
+  --row-bg: rgba(255, 246, 238, 0.92);
+  --code-text: #9d6f58;
+  --shadow-color: 143, 103, 74;
+  --toggle-bg: rgba(235, 214, 197, 0.72);
+  --toggle-border: rgba(176, 141, 116, 0.2);
+  --toggle-active-bg: #fffaf4;
+  --toggle-active-text: #6b4f40;
+  --toggle-idle-text: #8f7564;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.18), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(16, 185, 129, 0.12), transparent 24%),
-    #020617;
-  color: #e2e8f0;
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
 #root {
   min-height: 100vh;
+}
+
+.app-shell {
+  color: var(--text);
+}
+
+.hero-shell,
+.panel-shell {
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+
+.hero-shell {
+  border-color: var(--hero-border);
+  background: var(--hero-bg);
+}
+
+.panel-title,
+.content-strong {
+  color: var(--title);
+}
+
+.panel-description,
+.content-muted,
+.empty-state,
+.metric-label,
+.field-label {
+  color: var(--muted);
+}
+
+.content-default {
+  color: var(--text);
+}
+
+.content-faint {
+  color: var(--faint);
+}
+
+.field-input {
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  color: var(--field-text);
+}
+
+.field-input::placeholder {
+  color: var(--field-placeholder);
+}
+
+.field-input:focus {
+  border-color: rgba(96, 165, 250, 0.6);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+}
+
+.metric-card,
+.soft-card {
+  border: 1px solid var(--panel-border);
+  background: var(--soft-bg);
+}
+
+.metric-value {
+  color: var(--title);
+}
+
+.metric-value-emphasis {
+  color: #fb7185;
+}
+
+.card-surface {
+  border: 1px solid var(--panel-border);
+  background: var(--card-bg);
+}
+
+.empty-state {
+  border-color: var(--panel-border);
+}
+
+.section-button-idle {
+  border: 1px solid var(--toggle-border);
+  background: var(--toggle-bg);
+  color: var(--toggle-idle-text);
+}
+
+.section-button-idle:hover {
+  filter: brightness(1.04);
+}
+
+.section-button-active {
+  background: var(--toggle-active-bg);
+  color: var(--toggle-active-text);
+}
+
+.theme-toggle {
+  border: 1px solid var(--toggle-border);
+  background: var(--toggle-bg);
+}
+
+.theme-pill-idle {
+  color: var(--toggle-idle-text);
+}
+
+.theme-pill-active {
+  background: var(--toggle-active-bg);
+  color: var(--toggle-active-text);
+}
+
+.inventory-row {
+  background: var(--row-bg);
+  color: var(--text);
+}
+
+.inventory-code {
+  color: var(--code-text);
+}
+
+:root[data-theme="sepia"] .shadow-panel {
+  box-shadow: 0 24px 80px rgba(var(--shadow-color), 0.18);
 }
