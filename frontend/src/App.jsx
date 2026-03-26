@@ -24,6 +24,7 @@ function App() {
   const [items, setItems] = useState([]);
   const [reports, setReports] = useState(createEmptyReports());
   const [cashSummary, setCashSummary] = useState(createEmptyCashSummary());
+  const [dailySales, setDailySales] = useState([]);
   const [categories, setCategories] = useState([]);
   const [movements, setMovements] = useState([]);
   const [activeSection, setActiveSection] = useState("home");
@@ -127,22 +128,24 @@ function App() {
     setError("");
     try {
       const treasuryQuery = buildDateQuery(filters);
-      const [itemsResponse, reportsResponse, movementsResponse, cashResponse, categoriesResponse] = await Promise.all([
+      const [itemsResponse, reportsResponse, movementsResponse, cashResponse, categoriesResponse, dailySalesResponse] = await Promise.all([
         fetch(`${API_URL}/items`),
         fetch(`${API_URL}/reports/summary${treasuryQuery}`),
         fetch(`${API_URL}/movements?limit=12`),
         fetch(`${API_URL}/reports/cash-summary${treasuryQuery}`),
         fetch(`${API_URL}/categories`),
+        fetch(`${API_URL}/reports/daily-sales${treasuryQuery}`),
       ]);
-      if (!itemsResponse.ok || !reportsResponse.ok || !movementsResponse.ok || !cashResponse.ok || !categoriesResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
-      const [itemsData, reportsData, movementsData, cashData, categoriesData] = await Promise.all([
-        itemsResponse.json(), reportsResponse.json(), movementsResponse.json(), cashResponse.json(), categoriesResponse.json(),
+      if (!itemsResponse.ok || !reportsResponse.ok || !movementsResponse.ok || !cashResponse.ok || !categoriesResponse.ok || !dailySalesResponse.ok) throw new Error("No se pudieron cargar los datos principales.");
+      const [itemsData, reportsData, movementsData, cashData, categoriesData, dailySalesData] = await Promise.all([
+        itemsResponse.json(), reportsResponse.json(), movementsResponse.json(), cashResponse.json(), categoriesResponse.json(), dailySalesResponse.json(),
       ]);
       setItems([...itemsData].sort((a, b) => a.name.localeCompare(b.name)));
       setReports(reportsData);
       setMovements(movementsData);
       setCashSummary(cashData);
       setCategories(categoriesData);
+      setDailySales(dailySalesData);
       if (cashData.current_session) {
         setCashCloseForm((current) => ({ ...current, actual_cash_amount: current.actual_cash_amount === "" ? String(cashData.expected_cash_now.toFixed(2)) : current.actual_cash_amount }));
       } else {
@@ -610,7 +613,7 @@ function App() {
           <section className="mt-6">
             {activeSection === "home" ? renderHomeSection({ reports, cashSummary, inventoryValue, costValue, lowStockItems, latestMovements, branchName, loading, setActiveSection, totalCategories: categories.length, totalItems: items.length }) : null}
             {activeSection === "inventory" ? renderInventorySection({ loading, searchTerm, setSearchTerm, refreshAll, scanState, scanInputRef, scanCode, setScanCode, processScan, scanAmount, setScanAmount, saving, submitScan, scanCandidate, productForm, handleText, setProductForm, categories, resetProductEditor, editingId, submitProduct, newCategoryName, setNewCategoryName, submitCategory, filteredItems, startEditing, handleDelete, movements, inventoryValue, lowStockItems, setActiveSection }) : null}
-            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports }) : null}
+            {activeSection === "treasury" ? renderTreasurySection({ cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales }) : null}
           </section>
         </div>
       </div>
@@ -717,8 +720,7 @@ function renderInventorySection(props) {
 }
 
 function renderTreasurySection(props) {
-  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports } = props;
-  const dailySales = createDailySalesSeries(reports.recent_sales);
+  const { cashSummary, submitCashClose, cashCloseForm, setCashCloseForm, submitCashOpen, cashOpenForm, setCashOpenForm, saleForm, setSaleForm, submitSale, treasuryFilter, setTreasuryFilter, applyTreasuryFilter, clearTreasuryFilter, exportTreasuryCsv, printTreasurySummary, saving, treasuryFilterActive, reports, dailySales } = props;
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
@@ -787,7 +789,6 @@ function SummaryBadge({ label, value }) { return <div className="soft-card round
 function MiniLine({ label, value }) { return <div className="flex items-center justify-between gap-3"><span className="panel-description text-sm">{label}</span><span className="content-strong text-sm font-semibold">{value}</span></div>; }
 function ActionCard({ title, description, subtle = false, children }) { return <div className={`action-card rounded-[28px] p-5 ${subtle ? "action-card-light" : "action-card-strong"}`}><div className="content-strong text-3xl font-semibold">{title}</div><div className="panel-description mt-2 text-sm">{description}</div><div className="mt-5">{children}</div></div>; }
 
-function DailySalesChart({ rows }) { const maxRevenue = Math.max(...rows.map((row) => row.revenue), 1); return <div className="daily-sales-chart"><div className="chart-grid">{rows.map((row) => <div key={row.label} className="chart-column"><div className="chart-meta text-xs">{formatMoney(row.revenue)}</div><div className="chart-bar-wrap"><div className="chart-bar" style={{ height: `${Math.max((row.revenue / maxRevenue) * 100, 8)}%` }} /></div><div className="chart-label text-xs">{row.label}</div><div className="chart-foot text-[11px]">{row.sales} ventas</div></div>)}</div></div>; }
-function createDailySalesSeries(sales) { const grouped = sales.reduce((acc, sale) => { const date = new Date(sale.created_at); const label = date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }); const current = acc.get(label) ?? { label, revenue: 0, sales: 0 }; current.revenue += Number(sale.revenue || 0); current.sales += 1; acc.set(label, current); return acc; }, new Map()); return [...grouped.values()].slice(-7); }
+function DailySalesChart({ rows }) { const maxRevenue = Math.max(...rows.map((row) => row.revenue), 1); return <div className="daily-sales-chart"><div className="chart-grid">{rows.map((row) => <div key={row.label} className="chart-column"><div className="chart-meta text-xs">{formatMoney(row.revenue)}</div><div className="chart-bar-wrap"><div className="chart-bar" style={{ height: `${Math.max((row.revenue / maxRevenue) * 100, 8)}%` }} /></div><div className="chart-label text-xs">{row.label}</div><div className="chart-foot text-[11px]">{row.sales_count} ventas</div></div>)}</div></div>; }
 
 export default App;

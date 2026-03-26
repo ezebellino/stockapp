@@ -102,6 +102,15 @@ class RankedCategory(BaseModel):
     revenue: float
 
 
+class DailySalesPoint(BaseModel):
+    date: str
+    label: str
+    sales_count: int
+    units_sold: int
+    revenue: float
+    profit: float
+
+
 class ReportSummary(BaseModel):
     total_products: int
     total_units: int

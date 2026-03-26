@@ -712,6 +712,39 @@ class SQLiteStockRepository:
                 session_filter_params,
             ).fetchall()
         return [self._with_expected_cash(row) for row in rows]
+    def get_daily_sales_series(self, *, start_date: str | None = None, end_date: str | None = None, limit: int = 14) -> list[DailySalesPoint]:
+        sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    DATE(created_at, 'localtime') AS sale_date,
+                    COUNT(*) AS sales_count,
+                    COALESCE(SUM(quantity), 0) AS units_sold,
+                    COALESCE(SUM(quantity * unit_price), 0) AS revenue,
+                    COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS profit
+                FROM sales
+                {sales_filter_sql}
+                GROUP BY DATE(created_at, 'localtime')
+                ORDER BY sale_date DESC
+                LIMIT ?
+                """,
+                sales_filter_params + (limit,),
+            ).fetchall()
+
+        ordered_rows = list(reversed(rows))
+        return [
+            DailySalesPoint(
+                date=row["sale_date"],
+                label=self._format_daily_label(row["sale_date"]),
+                sales_count=row["sales_count"],
+                units_sold=row["units_sold"],
+                revenue=row["revenue"],
+                profit=row["profit"],
+            )
+            for row in ordered_rows
+        ]
+
     def _with_expected_cash(self, row: sqlite3.Row) -> CashSession:
         with self._connect() as connection:
             revenue_row = connection.execute(
@@ -735,6 +768,11 @@ class SQLiteStockRepository:
             opened_at=row["opened_at"],
             closed_at=row["closed_at"],
         )
+
+    @staticmethod
+    def _format_daily_label(value: str) -> str:
+        year, month, day = value.split("-")
+        return f"{day}/{month}"
 
     @staticmethod
     def _build_sales_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
@@ -849,4 +887,3 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
-

@@ -3,7 +3,7 @@ from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
-from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, ReportSummary
+from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, DailySalesPoint, ReportSummary
 from ..repository import repository
 
 
@@ -24,6 +24,15 @@ def get_cash_summary(
     end_date: str | None = Query(default=None),
 ) -> DailyCashSummary:
     return repository.get_daily_cash_summary(start_date=start_date, end_date=end_date)
+
+
+@router.get("/reports/daily-sales", response_model=list[DailySalesPoint])
+def get_daily_sales(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int = Query(default=14, ge=1, le=90),
+) -> list[DailySalesPoint]:
+    return repository.get_daily_sales_series(start_date=start_date, end_date=end_date, limit=limit)
 
 
 @router.get("/reports/export.csv")
