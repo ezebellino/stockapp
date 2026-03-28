@@ -1,7 +1,8 @@
-from sqlite3 import IntegrityError
+﻿from sqlite3 import IntegrityError
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
+from ..logging_config import get_logger
 from ..models import (
     Category,
     CategoryCreate,
@@ -17,6 +18,7 @@ from ..repository import repository
 
 
 router = APIRouter(tags=["items"])
+logger = get_logger("items")
 
 
 @router.get("/categories", response_model=list[Category])
@@ -29,6 +31,7 @@ def create_category(payload: CategoryCreate) -> Category:
     try:
         return repository.create_category(payload.name)
     except ValueError as exc:
+        logger.warning("No se pudo crear la categoria '%s': %s", payload.name, exc)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
@@ -85,6 +88,7 @@ def update_item(item_id: int, payload: StockItemUpdate) -> StockItem:
     try:
         item = repository.update_item(item_id, payload)
     except IntegrityError as exc:
+        logger.exception("Conflicto al actualizar item %s con codigo %s", item_id, payload.code)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="No se pudo actualizar el producto por un conflicto de codigo.",
@@ -107,6 +111,7 @@ def delete_item(item_id: int) -> Response:
 def scan_item(code: str, payload: StockAdjustment) -> StockItem:
     item = repository.increase_stock(code, payload.amount)
     if item is None:
+        logger.warning("Escaneo fallido para codigo inexistente: %s", code)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Producto no encontrado para el codigo escaneado.",
@@ -119,5 +124,6 @@ def create_sale(payload: SaleCreate) -> SaleRecord:
     try:
         sale, _item = repository.record_sale(payload)
     except ValueError as exc:
+        logger.warning("No se pudo registrar venta para codigo %s: %s", payload.code, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return sale

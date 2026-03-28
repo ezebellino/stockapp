@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+﻿from pydantic import BaseModel, Field
 
 
 class StockItemBase(BaseModel):
@@ -42,6 +42,7 @@ class SaleRecord(BaseModel):
     quantity: int
     unit_price: float
     cost_price: float
+    total_amount: float
     revenue: float
     profit: float
     created_at: str
@@ -135,3 +136,4 @@ class DailyCashSummary(BaseModel):
     today_units_sold: int
     expected_cash_now: float
     recent_sessions: list[CashSession]
+

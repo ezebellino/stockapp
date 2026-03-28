@@ -1,16 +1,22 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from .logging_config import get_logger
 from .repository import repository
 from .routers import items, reports
+
+logger = get_logger("api")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    logger.info("Inicializando backend local.")
     repository.initialize()
     yield
+    logger.info("Cierre de backend local.")
 
 
 app = FastAPI(
@@ -27,6 +33,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_server_errors(request: Request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Error no controlado en %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "Error interno del servidor."})
+
+    if response.status_code >= 500:
+        logger.error("Respuesta 5xx en %s %s", request.method, request.url.path)
+    return response
+
 
 app.include_router(items.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")

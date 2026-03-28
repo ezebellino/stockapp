@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, SidebarLink, StatusPanel, ThemeToggle } from "./components/AppUI";
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
@@ -121,6 +121,7 @@ function App() {
   const currentDateLabel = new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "long", year: "numeric" });
   const currentNavLabel = navItems.find((item) => item.id === activeSection)?.label ?? "Inicio";
   const branchName = accessConfig?.businessName || "Tu local";
+  const businessLogo = accessConfig?.businessLogoDataUrl || "";
 
   function handleThemeChange(nextTheme, event) {
     const target = event?.currentTarget;
@@ -327,6 +328,13 @@ function App() {
 
   async function submitSale(event) {
     event.preventDefault();
+    if (!cashSummary.current_session) {
+      setError("Antes de registrar una venta, abri la caja del dia desde Tesoreria.");
+      setActiveSection("treasury");
+      setScanState("warning");
+      playTone("warning");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -790,7 +798,7 @@ function App() {
           </div>
           <div className="branch-card mt-8 rounded-[28px] p-5">
             <div className={`flex items-center gap-4 ${sidebarCollapsed ? "justify-center" : ""}`}>
-              <div className="avatar-badge flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-semibold">{buildInitials(branchName)}</div>
+              {businessLogo ? <img src={businessLogo} alt={`Logo de ${branchName}`} className="business-logo h-14 w-14 rounded-2xl object-cover" /> : <div className="avatar-badge flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-semibold">{buildInitials(branchName)}</div>}
               <div className={sidebarCollapsed ? "sidebar-collapse-hidden" : ""}>
                 <div className="content-strong text-xl font-semibold">{branchName}</div>
                 <div className="content-muted text-sm">Estado operativo local</div>
@@ -848,6 +856,10 @@ function App() {
 }
 
 export default App;
+
+
+
+
 
 
 

@@ -1,13 +1,15 @@
-import csv
+﻿import csv
 from io import StringIO
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
+from ..logging_config import get_logger
 from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, DailySalesPoint, ReportSummary
 from ..repository import repository
 
 
 router = APIRouter(tags=["reports"])
+logger = get_logger("reports")
 
 
 @router.get("/reports/summary", response_model=ReportSummary)
@@ -58,7 +60,7 @@ def export_reports_csv(
     writer.writerow(["caja", "esperado", cash_summary.expected_cash_now])
     writer.writerow([])
 
-    writer.writerow(["ventas", "id", "codigo", "producto", "categoria", "cantidad", "precio_unitario", "recaudacion", "ganancia", "fecha"])
+    writer.writerow(["ventas", "id", "codigo", "producto", "categoria", "cantidad", "precio_unitario", "total", "recaudacion", "ganancia", "fecha"])
     for sale in sales:
         writer.writerow([
             "venta",
@@ -68,6 +70,7 @@ def export_reports_csv(
             sale.category,
             sale.quantity,
             sale.unit_price,
+            sale.total_amount,
             sale.revenue,
             sale.profit,
             sale.created_at,
@@ -102,6 +105,7 @@ def open_cash_session(payload: CashSessionOpen) -> CashSession:
     try:
         return repository.open_cash_session(payload)
     except ValueError as exc:
+        logger.warning("No se pudo abrir caja: %s", exc)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
@@ -110,4 +114,5 @@ def close_cash_session(payload: CashSessionClose) -> CashSession:
     try:
         return repository.close_cash_session(payload)
     except ValueError as exc:
+        logger.warning("No se pudo cerrar caja: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

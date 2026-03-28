@@ -168,6 +168,7 @@ body,
 .secondary-button { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 .danger-button { background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.22); color: #fda4af; }
 .sidebar-badge, .avatar-badge { background: var(--soft-strong); color: var(--title); }
+.business-logo { border: 1px solid var(--panel-border); background: var(--soft-bg); box-shadow: 0 10px 24px rgba(var(--shadow-color), 0.18); }
 .quick-action-default { background: var(--soft-bg); border: 1px solid var(--panel-border); }
 .quick-action-emphasis { background: var(--accent); border: 1px solid transparent; }
 .quick-action-emphasis .content-strong, .quick-action-emphasis .panel-description { color: var(--accent-contrast); }

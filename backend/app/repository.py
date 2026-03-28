@@ -5,6 +5,7 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .logging_config import get_logger
 from .models import (
     CashSession,
     CashSessionClose,
@@ -22,6 +23,9 @@ from .models import (
     StockItemCreate,
     StockItemUpdate,
 )
+
+
+logger = get_logger('repository')
 
 
 class SQLiteStockRepository:
@@ -65,6 +69,7 @@ class SQLiteStockRepository:
                     category TEXT NOT NULL,
                     quantity INTEGER NOT NULL,
                     unit_price REAL NOT NULL,
+                    total_amount REAL NOT NULL DEFAULT 0,
                     cost_price REAL NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
@@ -331,6 +336,9 @@ class SQLiteStockRepository:
         return self.get_by_code(code)
 
     def record_sale(self, payload: SaleCreate) -> tuple[SaleRecord, StockItem]:
+        if self.get_current_cash_session() is None:
+            raise ValueError("Abri la caja del dia antes de registrar ventas.")
+
         with self._connect() as connection:
             item_row = connection.execute(
                 """
@@ -346,14 +354,15 @@ class SQLiteStockRepository:
                 raise ValueError("Stock insuficiente para registrar la venta.")
 
             unit_price = payload.unit_price if payload.unit_price is not None else item_row["sale_price"]
+            total_amount = payload.amount * unit_price
             connection.execute(
                 "UPDATE items SET quantity = ? WHERE id = ?",
                 (item_row["quantity"] - payload.amount, item_row["id"]),
             )
             cursor = connection.execute(
                 """
-                INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_row["id"],
@@ -362,6 +371,7 @@ class SQLiteStockRepository:
                     item_row["category"],
                     payload.amount,
                     unit_price,
+                    total_amount,
                     item_row["cost_price"],
                 ),
             )
@@ -378,7 +388,7 @@ class SQLiteStockRepository:
 
             sale_row = connection.execute(
                 """
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
                 FROM sales
                 WHERE id = ?
                 """,
@@ -410,7 +420,7 @@ class SQLiteStockRepository:
                 SELECT
                     COUNT(*) AS total_sales_count,
                     COALESCE(SUM(quantity), 0) AS total_units_sold,
-                    COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                    COALESCE(SUM(total_amount), 0) AS total_revenue,
                     COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                 FROM sales
                 {sales_filter_sql}
@@ -419,7 +429,7 @@ class SQLiteStockRepository:
             ).fetchone()
             top_products_rows = connection.execute(
                 f"""
-                SELECT item_name AS name, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
+                SELECT item_name AS name, SUM(quantity) AS quantity, SUM(total_amount) AS revenue
                 FROM sales
                 {sales_filter_sql}
                 GROUP BY item_name
@@ -430,7 +440,7 @@ class SQLiteStockRepository:
             ).fetchall()
             top_categories_rows = connection.execute(
                 f"""
-                SELECT category, SUM(quantity) AS quantity, SUM(quantity * unit_price) AS revenue
+                SELECT category, SUM(quantity) AS quantity, SUM(total_amount) AS revenue
                 FROM sales
                 {sales_filter_sql}
                 GROUP BY category
@@ -441,7 +451,7 @@ class SQLiteStockRepository:
             ).fetchall()
             recent_sales_rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY id DESC
@@ -485,7 +495,7 @@ class SQLiteStockRepository:
                     SELECT
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
-                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(total_amount), 0) AS total_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     {sales_filter_sql}
@@ -510,7 +520,7 @@ class SQLiteStockRepository:
                     SELECT
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
-                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(total_amount), 0) AS total_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
@@ -531,7 +541,7 @@ class SQLiteStockRepository:
                     SELECT
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
-                        COALESCE(SUM(quantity * unit_price), 0) AS total_revenue,
+                        COALESCE(SUM(total_amount), 0) AS total_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     WHERE created_at >= ?
@@ -740,8 +750,8 @@ class SQLiteStockRepository:
                 connection.execute("UPDATE items SET quantity = quantity - ? WHERE id = ?", (sale["amount"], row["id"]))
                 connection.execute(
                     """
-                    INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, cost_price, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         row["id"],
@@ -750,6 +760,7 @@ class SQLiteStockRepository:
                         row["category"],
                         sale["amount"],
                         row["sale_price"],
+                        sale["amount"] * row["sale_price"],
                         row["cost_price"],
                         created_at_value,
                     ),
@@ -767,18 +778,33 @@ class SQLiteStockRepository:
             connection.commit()
     def _ensure_legacy_columns(self) -> None:
         with self._connect() as connection:
-            columns = {row["name"] for row in connection.execute("PRAGMA table_info(items)").fetchall()}
-            if "sale_price" not in columns:
+            item_columns = {row["name"] for row in connection.execute("PRAGMA table_info(items)").fetchall()}
+            if "sale_price" not in item_columns:
                 connection.execute("ALTER TABLE items ADD COLUMN sale_price REAL NOT NULL DEFAULT 0")
-            if "cost_price" not in columns:
+                logger.info("Se agrego la columna sale_price a items.")
+            if "cost_price" not in item_columns:
                 connection.execute("ALTER TABLE items ADD COLUMN cost_price REAL NOT NULL DEFAULT 0")
-            if "price" in columns:
+                logger.info("Se agrego la columna cost_price a items.")
+            if "price" in item_columns:
                 connection.execute(
                     """
                     UPDATE items
                     SET sale_price = CASE WHEN sale_price = 0 THEN price ELSE sale_price END
                     """
                 )
+
+            sales_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales)").fetchall()}
+            if "total_amount" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN total_amount REAL NOT NULL DEFAULT 0")
+                logger.info("Se agrego la columna total_amount a sales.")
+            connection.execute(
+                """
+                UPDATE sales
+                SET total_amount = quantity * unit_price
+                WHERE total_amount = 0
+                """
+            )
+
             categories = connection.execute("SELECT DISTINCT category FROM items WHERE TRIM(category) <> ''").fetchall()
             for category in categories:
                 canonical_name = self._canonicalize_label(category["category"])
@@ -848,7 +874,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY datetime(created_at) DESC, id DESC
@@ -879,7 +905,7 @@ class SQLiteStockRepository:
                     DATE(created_at, 'localtime') AS sale_date,
                     COUNT(*) AS sales_count,
                     COALESCE(SUM(quantity), 0) AS units_sold,
-                    COALESCE(SUM(quantity * unit_price), 0) AS revenue,
+                    COALESCE(SUM(total_amount), 0) AS revenue,
                     COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS profit
                 FROM sales
                 {sales_filter_sql}
@@ -907,7 +933,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             revenue_row = connection.execute(
                 """
-                SELECT COALESCE(SUM(quantity * unit_price), 0) AS total_revenue
+                SELECT COALESCE(SUM(total_amount), 0) AS total_revenue
                 FROM sales
                 WHERE created_at >= ?
                 AND (? IS NULL OR created_at <= ?)
@@ -1014,7 +1040,7 @@ class SQLiteStockRepository:
 
     @staticmethod
     def _to_sale(row: sqlite3.Row) -> SaleRecord:
-        revenue = row["quantity"] * row["unit_price"]
+        total_amount = row["total_amount"] if "total_amount" in row.keys() else row["quantity"] * row["unit_price"]
         profit = row["quantity"] * (row["unit_price"] - row["cost_price"])
         return SaleRecord(
             id=row["id"],
@@ -1025,7 +1051,8 @@ class SQLiteStockRepository:
             quantity=row["quantity"],
             unit_price=row["unit_price"],
             cost_price=row["cost_price"],
-            revenue=revenue,
+            total_amount=total_amount,
+            revenue=total_amount,
             profit=profit,
             created_at=row["created_at"],
         )
@@ -1082,6 +1109,9 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+
 
 
 
