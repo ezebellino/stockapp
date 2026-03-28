@@ -424,9 +424,11 @@ class SQLiteStockRepository:
                 f"""
                 SELECT
                     COUNT(*) AS total_sales_count,
-                    COALESCE(SUM(quantity), 0) AS total_units_sold,
-                    COALESCE(SUM(total_amount), 0) AS total_revenue,
-                    COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
+                        COALESCE(SUM(quantity), 0) AS total_units_sold,
+                        COALESCE(SUM(total_amount), 0) AS total_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method = 'Efectivo' THEN total_amount ELSE 0 END), 0) AS cash_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method <> 'Efectivo' THEN total_amount ELSE 0 END), 0) AS non_cash_revenue,
+                        COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                 FROM sales
                 {sales_filter_sql}
                 """,
@@ -501,13 +503,15 @@ class SQLiteStockRepository:
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
                         COALESCE(SUM(total_amount), 0) AS total_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method = 'Efectivo' THEN total_amount ELSE 0 END), 0) AS cash_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method <> 'Efectivo' THEN total_amount ELSE 0 END), 0) AS non_cash_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     {sales_filter_sql}
                     """,
                     sales_filter_params,
                 ).fetchone()
-                expected_cash_now = today_row["total_revenue"]
+                expected_cash_now = today_row["cash_revenue"]
                 session_filter_sql, session_filter_params = self._build_session_period_filter(start_date=start_date, end_date=end_date)
                 recent_rows = connection.execute(
                     f"""
@@ -526,12 +530,14 @@ class SQLiteStockRepository:
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
                         COALESCE(SUM(total_amount), 0) AS total_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method = 'Efectivo' THEN total_amount ELSE 0 END), 0) AS cash_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method <> 'Efectivo' THEN total_amount ELSE 0 END), 0) AS non_cash_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
                     """
                 ).fetchone()
-                expected_cash_now = today_row["total_revenue"]
+                expected_cash_now = today_row["cash_revenue"]
                 recent_rows = connection.execute(
                     """
                     SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
@@ -547,13 +553,15 @@ class SQLiteStockRepository:
                         COUNT(*) AS total_sales_count,
                         COALESCE(SUM(quantity), 0) AS total_units_sold,
                         COALESCE(SUM(total_amount), 0) AS total_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method = 'Efectivo' THEN total_amount ELSE 0 END), 0) AS cash_revenue,
+                        COALESCE(SUM(CASE WHEN payment_method <> 'Efectivo' THEN total_amount ELSE 0 END), 0) AS non_cash_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
                     WHERE created_at >= ?
                     """,
                     (current_session.opened_at,),
                 ).fetchone()
-                expected_cash_now = current_session.opening_amount + today_row["total_revenue"]
+                expected_cash_now = current_session.opening_amount + today_row["cash_revenue"]
                 recent_rows = connection.execute(
                     """
                     SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
@@ -566,6 +574,8 @@ class SQLiteStockRepository:
         return DailyCashSummary(
             current_session=None if (start_date or end_date) else current_session,
             today_revenue=today_row["total_revenue"],
+            cash_revenue=today_row["cash_revenue"],
+            non_cash_revenue=today_row["non_cash_revenue"],
             today_profit=today_row["total_profit"],
             today_sales_count=today_row["total_sales_count"],
             today_units_sold=today_row["total_units_sold"],
@@ -953,7 +963,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             revenue_row = connection.execute(
                 """
-                SELECT COALESCE(SUM(total_amount), 0) AS total_revenue
+                SELECT COALESCE(SUM(CASE WHEN payment_method = 'Efectivo' THEN total_amount ELSE 0 END), 0) AS total_revenue
                 FROM sales
                 WHERE created_at >= ?
                 AND (? IS NULL OR created_at <= ?)
@@ -1136,6 +1146,13 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+
+
+
+
+
 
 
 

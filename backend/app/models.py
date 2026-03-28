@@ -132,11 +132,15 @@ class ReportSummary(BaseModel):
 class DailyCashSummary(BaseModel):
     current_session: CashSession | None = None
     today_revenue: float
+    cash_revenue: float
+    non_cash_revenue: float
     today_profit: float
     today_sales_count: int
     today_units_sold: int
     expected_cash_now: float
     recent_sessions: list[CashSession]
+
+
 
 
 

@@ -11,7 +11,7 @@ export default function HomeSection({ reports, cashSummary, inventoryValue, cost
             <MetricCard label="Recaudación" value={formatMoney(reports.total_revenue)} />
             <MetricCard label="Ganancia" value={formatMoney(reports.total_profit)} />
             <MetricCard label="Valor de inventario" value={formatMoney(inventoryValue)} />
-            <MetricCard label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
+            <MetricCard label="Caja física" value={formatMoney(cashSummary.expected_cash_now)} />
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-3">
             <QuickAction title="Ir a Inventario" description="Altas, edición, escáner y stock." onClick={() => setActiveSection("inventory")} />
@@ -23,6 +23,8 @@ export default function HomeSection({ reports, cashSummary, inventoryValue, cost
           <div className="space-y-4">
             <StatusRow label="Caja" value={cashSummary.current_session ? "Abierta" : "Cerrada"} strong={Boolean(cashSummary.current_session)} />
             <StatusRow label="Ventas del día" value={cashSummary.today_sales_count} />
+            <StatusRow label="Efectivo del día" value={formatMoney(cashSummary.cash_revenue)} />
+            <StatusRow label="Ventas virtuales" value={formatMoney(cashSummary.non_cash_revenue)} />
             <StatusRow label="Unidades vendidas" value={cashSummary.today_units_sold} />
             <StatusRow label="Costo inmovilizado" value={formatMoney(costValue)} />
           </div>
@@ -57,4 +59,5 @@ export default function HomeSection({ reports, cashSummary, inventoryValue, cost
     </div>
   );
 }
+
 

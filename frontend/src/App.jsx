@@ -756,7 +756,7 @@ function App() {
               <MiniStat label="Productos activos" value={items.length} />
               <MiniStat label="Categorías cargadas" value={categories.length} />
               <MiniStat label="Movimientos recientes" value={movements.length} />
-              <MiniStat label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
+              <MiniStat label="Caja física" value={formatMoney(cashSummary.expected_cash_now)} />
             </div>
           </section>
           <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
@@ -815,7 +815,7 @@ function App() {
             <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen rápido</div>
             <div className="mt-4 space-y-4">
               <MiniLine label="Ventas del período" value={formatMoney(cashSummary.today_revenue)} />
-              <MiniLine label="Caja esperada" value={formatMoney(cashSummary.expected_cash_now)} />
+              <MiniLine label="Caja física" value={formatMoney(cashSummary.expected_cash_now)} />
               <MiniLine label="Stock bajo" value={lowStockItems.length} />
             </div>
           </div>
@@ -859,6 +859,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
