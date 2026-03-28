@@ -1,5 +1,5 @@
 ﻿export const emptyProductForm = { code: "", name: "", category: "General", quantity: 0, min_quantity: 0, sale_price: 0, cost_price: 0 };
-export const emptySaleForm = { code: "", amount: 1, unit_price: "" };
+export const emptySaleForm = { code: "", amount: 1, unit_price: "", payment_method: "Efectivo" };
 export const emptyCashOpenForm = { opening_amount: "", notes: "" };
 export const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
 export const emptyTreasuryFilter = { startDate: "", endDate: "" };
@@ -24,3 +24,4 @@ export const accessStorageKey = "appstock-local-access";
 export const sessionStorageKey = "appstock-session-open";
 export const activeSectionStorageKey = "appstock-active-section";
 export const sidebarCollapsedStorageKey = "appstock-sidebar-collapsed";
+export const paymentMethodOptions = ["Efectivo", "Débito", "Crédito", "Transferencia", "Mercado Pago", "Otro"];

@@ -69,6 +69,7 @@ class SQLiteStockRepository:
                     category TEXT NOT NULL,
                     quantity INTEGER NOT NULL,
                     unit_price REAL NOT NULL,
+                    payment_method TEXT NOT NULL DEFAULT 'Efectivo',
                     total_amount REAL NOT NULL DEFAULT 0,
                     cost_price REAL NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -332,8 +333,10 @@ class SQLiteStockRepository:
                 reference="Ingreso por escaner",
             )
             connection.commit()
-
-        return self.get_by_code(code)
+        item = self.get_by_code(code)
+        if item is not None:
+            logger.info("Stock incrementado | codigo=%s | cantidad_ingresada=%s | stock_actual=%s", item.code, amount, item.quantity)
+        return item
 
     def record_sale(self, payload: SaleCreate) -> tuple[SaleRecord, StockItem]:
         if self.get_current_cash_session() is None:
@@ -354,6 +357,7 @@ class SQLiteStockRepository:
                 raise ValueError("Stock insuficiente para registrar la venta.")
 
             unit_price = payload.unit_price if payload.unit_price is not None else item_row["sale_price"]
+            payment_method = self._canonicalize_payment_method(payload.payment_method)
             total_amount = payload.amount * unit_price
             connection.execute(
                 "UPDATE items SET quantity = ? WHERE id = ?",
@@ -361,8 +365,8 @@ class SQLiteStockRepository:
             )
             cursor = connection.execute(
                 """
-                INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_row["id"],
@@ -371,6 +375,7 @@ class SQLiteStockRepository:
                     item_row["category"],
                     payload.amount,
                     unit_price,
+                    payment_method,
                     total_amount,
                     item_row["cost_price"],
                 ),
@@ -388,7 +393,7 @@ class SQLiteStockRepository:
 
             sale_row = connection.execute(
                 """
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
                 FROM sales
                 WHERE id = ?
                 """,
@@ -451,7 +456,7 @@ class SQLiteStockRepository:
             ).fetchall()
             recent_sales_rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY id DESC
@@ -603,7 +608,9 @@ class SQLiteStockRepository:
                 """,
                 (cursor.lastrowid,),
             ).fetchone()
-        return self._with_expected_cash(row)
+        session = self._with_expected_cash(row)
+        logger.info("Caja abierta | sesion_id=%s | monto_inicial=%.2f", session.id, session.opening_amount)
+        return session
 
     def close_cash_session(self, payload: CashSessionClose) -> CashSession:
         current_session = self.get_current_cash_session()
@@ -634,7 +641,9 @@ class SQLiteStockRepository:
                 """,
                 (current_session.id,),
             ).fetchone()
-        return self._with_expected_cash(row)
+        session = self._with_expected_cash(row)
+        logger.info("Caja cerrada | sesion_id=%s | esperado=%.2f | real=%.2f | diferencia=%.2f", session.id, session.expected_cash_amount, session.actual_cash_amount or 0, session.difference_amount or 0)
+        return session
 
     def _seed_if_empty(self) -> None:
         with self._connect() as connection:
@@ -750,8 +759,8 @@ class SQLiteStockRepository:
                 connection.execute("UPDATE items SET quantity = quantity - ? WHERE id = ?", (sale["amount"], row["id"]))
                 connection.execute(
                     """
-                    INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         row["id"],
@@ -760,6 +769,7 @@ class SQLiteStockRepository:
                         row["category"],
                         sale["amount"],
                         row["sale_price"],
+                        "Efectivo",
                         sale["amount"] * row["sale_price"],
                         row["cost_price"],
                         created_at_value,
@@ -794,9 +804,19 @@ class SQLiteStockRepository:
                 )
 
             sales_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales)").fetchall()}
+            if "payment_method" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Efectivo'")
+                logger.info("Se agrego la columna payment_method a sales.")
             if "total_amount" not in sales_columns:
                 connection.execute("ALTER TABLE sales ADD COLUMN total_amount REAL NOT NULL DEFAULT 0")
                 logger.info("Se agrego la columna total_amount a sales.")
+            connection.execute(
+                """
+                UPDATE sales
+                SET payment_method = 'Efectivo'
+                WHERE TRIM(COALESCE(payment_method, '')) = ''
+                """
+            )
             connection.execute(
                 """
                 UPDATE sales
@@ -874,7 +894,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, total_amount, cost_price, created_at
+                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY datetime(created_at) DESC, id DESC
@@ -996,6 +1016,12 @@ class SQLiteStockRepository:
         return " ".join(word[:1].upper() + word[1:].lower() for word in cleaned.split())
 
     @staticmethod
+    def _canonicalize_payment_method(value: str) -> str:
+        allowed = {"Efectivo", "Débito", "Crédito", "Transferencia", "Mercado Pago", "Otro"}
+        cleaned = " ".join(str(value or "Efectivo").strip().split())
+        return cleaned if cleaned in allowed else "Otro"
+
+    @staticmethod
     def _build_sales_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
         clauses: list[str] = []
         params: list[str] = []
@@ -1051,6 +1077,7 @@ class SQLiteStockRepository:
             quantity=row["quantity"],
             unit_price=row["unit_price"],
             cost_price=row["cost_price"],
+            payment_method=row["payment_method"] if "payment_method" in row.keys() else "Efectivo",
             total_amount=total_amount,
             revenue=total_amount,
             profit=profit,
@@ -1109,6 +1136,25 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -31,7 +31,7 @@ class SaleCreate(BaseModel):
     code: str = Field(..., min_length=3, max_length=64)
     amount: int = Field(..., gt=0, le=9999)
     unit_price: float | None = Field(default=None, ge=0)
-
+    payment_method: str = Field(default="Efectivo", min_length=3, max_length=40)
 
 class SaleRecord(BaseModel):
     id: int
@@ -42,6 +42,7 @@ class SaleRecord(BaseModel):
     quantity: int
     unit_price: float
     cost_price: float
+    payment_method: str
     total_amount: float
     revenue: float
     profit: float
@@ -136,4 +137,8 @@ class DailyCashSummary(BaseModel):
     today_units_sold: int
     expected_cash_now: float
     recent_sessions: list[CashSession]
+
+
+
+
 

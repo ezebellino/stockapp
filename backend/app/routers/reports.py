@@ -60,7 +60,7 @@ def export_reports_csv(
     writer.writerow(["caja", "esperado", cash_summary.expected_cash_now])
     writer.writerow([])
 
-    writer.writerow(["ventas", "id", "codigo", "producto", "categoria", "cantidad", "precio_unitario", "total", "recaudacion", "ganancia", "fecha"])
+    writer.writerow(["ventas", "id", "codigo", "producto", "categoria", "cantidad", "precio_unitario", "medio_pago", "total", "recaudacion", "ganancia", "fecha"])
     for sale in sales:
         writer.writerow([
             "venta",
@@ -70,6 +70,7 @@ def export_reports_csv(
             sale.category,
             sale.quantity,
             sale.unit_price,
+            sale.payment_method,
             sale.total_amount,
             sale.revenue,
             sale.profit,
@@ -116,3 +117,5 @@ def close_cash_session(payload: CashSessionClose) -> CashSession:
     except ValueError as exc:
         logger.warning("No se pudo cerrar caja: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+

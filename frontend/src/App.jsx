@@ -3,7 +3,7 @@ import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, Si
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
 import TreasurySection from "./sections/TreasurySection";
-import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
+import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, paymentMethodOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
 import { buildBusinessProfileForm, buildDateQuery, buildInitials, buildTreasuryPresetFilter, createEmptyCashSummary, createEmptyReports, escapeHtml, formatDate, formatDateTime, formatInteger, formatMoney, handleText, normalizeProductForm, normalizeText, readLocalJson, sectionDescription, sectionEyebrow, sectionTitle } from "./lib/appHelpers";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
 function App() {
@@ -338,7 +338,7 @@ function App() {
     setSaving(true);
     setError("");
     try {
-      const payload = { code: saleForm.code, amount: Number(saleForm.amount), unit_price: saleForm.unit_price === "" ? null : Number(saleForm.unit_price) };
+      const payload = { code: saleForm.code, amount: Number(saleForm.amount), unit_price: saleForm.unit_price === "" ? null : Number(saleForm.unit_price), payment_method: saleForm.payment_method };
       const response = await fetch(`${API_URL}/sales`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo registrar la venta.");
@@ -544,6 +544,7 @@ function App() {
   const businessLogo = business.businessLogoDataUrl || "";
   const cashierLabel = escapeHtml(options?.cashierName || "Mostrador");
   const channelLabel = escapeHtml(options?.channelLabel || "Mostrador");
+  const paymentMethodLabel = escapeHtml(sale.payment_method || "Efectivo");
   const saleNumber = `V-${String(sale.id).padStart(6, "0")}`;
   const saleDateTime = formatDateTime(sale.created_at);
   const subtotal = Number(sale.quantity) * Number(sale.unit_price);
@@ -598,6 +599,7 @@ function App() {
       <div class="row"><span class="label">Fecha y hora</span><span class="value">${escapeHtml(saleDateTime)}</span></div>
       <div class="row"><span class="label">Cajero</span><span class="value">${cashierLabel}</span></div>
       <div class="row"><span class="label">Canal</span><span class="value">${channelLabel}</span></div>
+      <div class="row"><span class="label">Medio de pago</span><span class="value">${paymentMethodLabel}</span></div>
     </section>
 
     <section class="product">
@@ -613,6 +615,7 @@ function App() {
     <section class="totals">
       <div class="row total-strong"><span>Total</span><span>${formatMoney(sale.revenue)}</span></div>
       <div class="row"><span class="label">Items</span><span class="value">${formatInteger(sale.quantity)}</span></div>
+      <div class="row"><span class="label">Pago</span><span class="value">${paymentMethodLabel}</span></div>
     </section>
 
     <footer class="foot">
@@ -847,7 +850,7 @@ function App() {
           <section className="mt-6">
             {activeSection === "home" ? <HomeSection reports={reports} cashSummary={cashSummary} inventoryValue={inventoryValue} costValue={costValue} lowStockItems={lowStockItems} latestMovements={latestMovements} branchName={branchName} loading={loading} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} topProduct={reports.top_products[0]} /> : null}
             {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
-            {activeSection === "treasury" ? <TreasurySection cashSummary={cashSummary} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} saleForm={saleForm} setSaleForm={setSaleForm} submitSale={submitSale} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : null}
+            {activeSection === "treasury" ? <TreasurySection cashSummary={cashSummary} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} saleForm={saleForm} setSaleForm={setSaleForm} submitSale={submitSale} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} paymentMethodOptions={paymentMethodOptions} /> : null}
           </section>
         </div>
       </div>
@@ -856,6 +859,8 @@ function App() {
 }
 
 export default App;
+
+
 
 
 
