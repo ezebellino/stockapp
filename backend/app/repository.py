@@ -17,7 +17,10 @@ from .models import (
     ReportSummary,
     RankedCategory,
     RankedProduct,
+    SaleCheckoutCreate,
+    SaleCheckoutResult,
     SaleCreate,
+    SaleLineCreate,
     SaleRecord,
     StockItem,
     StockItemCreate,
@@ -64,6 +67,7 @@ class SQLiteStockRepository:
                 CREATE TABLE IF NOT EXISTS sales (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     item_id INTEGER,
+                    order_number TEXT,
                     code TEXT NOT NULL,
                     item_name TEXT NOT NULL,
                     category TEXT NOT NULL,
@@ -339,72 +343,117 @@ class SQLiteStockRepository:
         return item
 
     def record_sale(self, payload: SaleCreate) -> tuple[SaleRecord, StockItem]:
-        if self.get_current_cash_session() is None:
-            raise ValueError("Abri la caja del dia antes de registrar ventas.")
-
-        with self._connect() as connection:
-            item_row = connection.execute(
-                """
-                SELECT id, code, name, category, quantity, sale_price, cost_price
-                FROM items
-                WHERE code = ?
-                """,
-                (payload.code,),
-            ).fetchone()
-            if item_row is None:
-                raise ValueError("Producto no encontrado para registrar la venta.")
-            if item_row["quantity"] < payload.amount:
-                raise ValueError("Stock insuficiente para registrar la venta.")
-
-            unit_price = payload.unit_price if payload.unit_price is not None else item_row["sale_price"]
-            payment_method = self._canonicalize_payment_method(payload.payment_method)
-            total_amount = payload.amount * unit_price
-            connection.execute(
-                "UPDATE items SET quantity = ? WHERE id = ?",
-                (item_row["quantity"] - payload.amount, item_row["id"]),
+        checkout = self.record_sale_checkout(
+            SaleCheckoutCreate(
+                payment_method=payload.payment_method,
+                items=[SaleLineCreate(code=payload.code, amount=payload.amount, unit_price=payload.unit_price)],
             )
-            cursor = connection.execute(
-                """
-                INSERT INTO sales (item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    item_row["id"],
-                    item_row["code"],
-                    item_row["name"],
-                    item_row["category"],
-                    payload.amount,
-                    unit_price,
-                    payment_method,
-                    total_amount,
-                    item_row["cost_price"],
-                ),
-            )
-            self._record_movement(
-                connection,
-                item_id=item_row["id"],
-                code=item_row["code"],
-                item_name=item_row["name"],
-                movement_type="SALE",
-                quantity_delta=-payload.amount,
-                reference="Venta registrada",
-            )
-            connection.commit()
-
-            sale_row = connection.execute(
-                """
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
-                FROM sales
-                WHERE id = ?
-                """,
-                (cursor.lastrowid,),
-            ).fetchone()
-
-        sale = self._to_sale(sale_row)
-        item = self.get_item(item_row["id"])
+        )
+        item = self.get_by_code(payload.code)
         if item is None:
             raise RuntimeError("No se pudo recuperar el producto luego de la venta.")
-        return sale, item
+        return checkout.sales[0], item
+
+    def record_sale_checkout(self, payload: SaleCheckoutCreate) -> SaleCheckoutResult:
+        if self.get_current_cash_session() is None:
+            raise ValueError("Abrí la caja del día antes de registrar ventas.")
+
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        order_number = f"V-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3]}"
+        payment_method = self._canonicalize_payment_method(payload.payment_method)
+
+        with self._connect() as connection:
+            for line in payload.items:
+                item_row = connection.execute(
+                    """
+                    SELECT id, code, name, category, quantity, sale_price, cost_price
+                    FROM items
+                    WHERE code = ?
+                    """,
+                    (line.code,),
+                ).fetchone()
+                if item_row is None:
+                    raise ValueError(f"Producto no encontrado para registrar la venta: {line.code}.")
+                if item_row["quantity"] < line.amount:
+                    raise ValueError(f"Stock insuficiente para {item_row['name']}.")
+
+            for line in payload.items:
+                item_row = connection.execute(
+                    """
+                    SELECT id, code, name, category, quantity, sale_price, cost_price
+                    FROM items
+                    WHERE code = ?
+                    """,
+                    (line.code,),
+                ).fetchone()
+                unit_price = line.unit_price if line.unit_price is not None else item_row["sale_price"]
+                total_amount = line.amount * unit_price
+                connection.execute(
+                    "UPDATE items SET quantity = ? WHERE id = ?",
+                    (item_row["quantity"] - line.amount, item_row["id"]),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO sales (item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item_row["id"],
+                        order_number,
+                        item_row["code"],
+                        item_row["name"],
+                        item_row["category"],
+                        line.amount,
+                        unit_price,
+                        payment_method,
+                        total_amount,
+                        item_row["cost_price"],
+                        created_at,
+                    ),
+                )
+                self._record_movement(
+                    connection,
+                    item_id=item_row["id"],
+                    code=item_row["code"],
+                    item_name=item_row["name"],
+                    movement_type="SALE",
+                    quantity_delta=-line.amount,
+                    reference=f"Venta {order_number}",
+                    created_at=created_at,
+                )
+            connection.commit()
+            sale_rows = connection.execute(
+                """
+                SELECT id, item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
+                FROM sales
+                WHERE order_number = ?
+                ORDER BY id ASC
+                """,
+                (order_number,),
+            ).fetchall()
+
+        sales = [self._to_sale(row) for row in sale_rows]
+        total_units = sum(sale.quantity for sale in sales)
+        total_amount = sum(sale.total_amount for sale in sales)
+        total_profit = sum(sale.profit for sale in sales)
+        logger.info(
+            "Venta checkout registrada | orden=%s | lineas=%s | unidades=%s | total=%s | medio=%s",
+            order_number,
+            len(sales),
+            total_units,
+            total_amount,
+            payment_method,
+        )
+        return SaleCheckoutResult(
+            order_number=order_number,
+            payment_method=payment_method,
+            created_at=created_at,
+            total_items=len(sales),
+            total_units=total_units,
+            total_amount=total_amount,
+            total_profit=total_profit,
+            sales=sales,
+        )
 
     def get_report_summary(self, *, start_date: str | None = None, end_date: str | None = None) -> ReportSummary:
         sales_filter_sql, sales_filter_params = self._build_sales_period_filter(start_date=start_date, end_date=end_date)
@@ -458,7 +507,7 @@ class SQLiteStockRepository:
             ).fetchall()
             recent_sales_rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
+                SELECT id, item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY id DESC
@@ -820,6 +869,9 @@ class SQLiteStockRepository:
             if "total_amount" not in sales_columns:
                 connection.execute("ALTER TABLE sales ADD COLUMN total_amount REAL NOT NULL DEFAULT 0")
                 logger.info("Se agrego la columna total_amount a sales.")
+            if "order_number" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN order_number TEXT")
+                logger.info("Se agrego la columna order_number a sales.")
             connection.execute(
                 """
                 UPDATE sales
@@ -834,7 +886,13 @@ class SQLiteStockRepository:
                 WHERE total_amount = 0
                 """
             )
-
+            connection.execute(
+                """
+                UPDATE sales
+                SET order_number = printf('V-%06d', id)
+                WHERE TRIM(COALESCE(order_number, '')) = ''
+                """
+            )
             categories = connection.execute("SELECT DISTINCT category FROM items WHERE TRIM(category) <> ''").fetchall()
             for category in categories:
                 canonical_name = self._canonicalize_label(category["category"])
@@ -904,7 +962,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 f"""
-                SELECT id, item_id, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
+                SELECT id, item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
                 FROM sales
                 {sales_filter_sql}
                 ORDER BY datetime(created_at) DESC, id DESC
@@ -1081,6 +1139,7 @@ class SQLiteStockRepository:
         return SaleRecord(
             id=row["id"],
             item_id=row["item_id"],
+            order_number=row["order_number"] if "order_number" in row.keys() else None,
             code=row["code"],
             item_name=row["item_name"],
             category=row["category"],
@@ -1146,6 +1205,9 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+
 
 
 

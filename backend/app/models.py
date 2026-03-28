@@ -33,9 +33,22 @@ class SaleCreate(BaseModel):
     unit_price: float | None = Field(default=None, ge=0)
     payment_method: str = Field(default="Efectivo", min_length=3, max_length=40)
 
+
+class SaleLineCreate(BaseModel):
+    code: str = Field(..., min_length=3, max_length=64)
+    amount: int = Field(..., gt=0, le=9999)
+    unit_price: float | None = Field(default=None, ge=0)
+
+
+class SaleCheckoutCreate(BaseModel):
+    payment_method: str = Field(default="Efectivo", min_length=3, max_length=40)
+    items: list[SaleLineCreate] = Field(..., min_length=1, max_length=100)
+
+
 class SaleRecord(BaseModel):
     id: int
     item_id: int | None = None
+    order_number: str | None = None
     code: str
     item_name: str
     category: str
@@ -47,6 +60,17 @@ class SaleRecord(BaseModel):
     revenue: float
     profit: float
     created_at: str
+
+
+class SaleCheckoutResult(BaseModel):
+    order_number: str
+    payment_method: str
+    created_at: str
+    total_items: int
+    total_units: int
+    total_amount: float
+    total_profit: float
+    sales: list[SaleRecord]
 
 
 class InventoryMovement(BaseModel):
@@ -139,10 +163,3 @@ class DailyCashSummary(BaseModel):
     today_units_sold: int
     expected_cash_now: float
     recent_sessions: list[CashSession]
-
-
-
-
-
-
-

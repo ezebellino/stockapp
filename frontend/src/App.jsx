@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, SidebarLink, StatusPanel, ThemeToggle } from "./components/AppUI";
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
@@ -16,6 +16,7 @@ function App() {
   const [activeSection, setActiveSection] = useState("home");
   const [productForm, setProductForm] = useState(emptyProductForm);
   const [saleForm, setSaleForm] = useState(emptySaleForm);
+  const [saleCart, setSaleCart] = useState([]);
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
   const [cashCloseForm, setCashCloseForm] = useState(emptyCashCloseForm);
   const [treasuryFilter, setTreasuryFilter] = useState(emptyTreasuryFilter);
@@ -34,6 +35,10 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [scanState, setScanState] = useState("ready");
   const [searchTerm, setSearchTerm] = useState("");
+  const [salesSearchTerm, setSalesSearchTerm] = useState("");
+  const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState("Todas las categorías");
+  const [treasuryAccessPassword, setTreasuryAccessPassword] = useState("");
+  const [treasuryUnlocked, setTreasuryUnlocked] = useState(false);
   const [accessConfig, setAccessConfig] = useState(null);
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -111,9 +116,22 @@ function App() {
   const lowStockItems = useMemo(() => items.filter((item) => item.quantity <= item.min_quantity), [items]);
   const filteredItems = useMemo(() => {
     const term = normalizeText(searchTerm);
-    if (!term) return items;
-    return items.filter((item) => normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term));
-  }, [items, searchTerm]);
+    const categoryTerm = normalizeText(inventoryCategoryFilter);
+    return items.filter((item) => {
+      const matchesTerm = !term || normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term);
+      const matchesCategory = !categoryTerm || categoryTerm === normalizeText("Todas las categorías") || normalizeText(item.category) === categoryTerm;
+      return matchesTerm && matchesCategory;
+    });
+  }, [inventoryCategoryFilter, items, searchTerm]);
+  const saleMatches = useMemo(() => {
+    const term = normalizeText(salesSearchTerm);
+    if (!term) return items.slice(0, 8);
+    return items.filter((item) => normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term)).slice(0, 8);
+  }, [items, salesSearchTerm]);
+  const selectedSaleItem = useMemo(() => items.find((item) => item.code === saleForm.code) ?? null, [items, saleForm.code]);
+  const recentSales = useMemo(() => reports.recent_sales.slice(0, 5), [reports.recent_sales]);
+  const saleCartTotal = useMemo(() => saleCart.reduce((total, line) => total + line.total_amount, 0), [saleCart]);
+  const saleCartUnits = useMemo(() => saleCart.reduce((total, line) => total + line.quantity, 0), [saleCart]);
   const inventoryValue = useMemo(() => items.reduce((total, item) => total + item.quantity * item.sale_price, 0), [items]);
   const costValue = useMemo(() => items.reduce((total, item) => total + item.quantity * item.cost_price, 0), [items]);
   const latestMovements = useMemo(() => movements.slice(0, 5), [movements]);
@@ -278,9 +296,74 @@ function App() {
   function handleLogout() {
     window.localStorage.removeItem(sessionStorageKey);
     setSessionOpen(false);
+    setTreasuryUnlocked(false);
+    setTreasuryAccessPassword("");
     setLoginForm((current) => ({ ...current, password: "" }));
     setError("");
+    setSaleCart([]);
     setMessage("Sesión local cerrada correctamente.");
+  }
+
+  function chooseSaleItem(item) {
+    setSaleForm((current) => ({ ...current, code: item.code, amount: 1, unit_price: String(item.sale_price), payment_method: current.payment_method }));
+    setSalesSearchTerm(item.name);
+    setError("");
+    setMessage(`${item.name} listo para vender.`);
+  }
+
+  function addSaleLine(event) {
+    event.preventDefault();
+    if (!selectedSaleItem) {
+      setError("Seleccioná un producto antes de agregarlo al carrito.");
+      return;
+    }
+    const quantity = Number(saleForm.amount);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError("Indicá una cantidad válida para agregar al carrito.");
+      return;
+    }
+    const unitPrice = saleForm.unit_price === "" ? Number(selectedSaleItem.sale_price) : Number(saleForm.unit_price);
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setError("Indicá un precio válido para el producto.");
+      return;
+    }
+    setSaleCart((current) => [
+      ...current,
+      {
+        key: `${selectedSaleItem.code}-${Date.now()}`,
+        code: selectedSaleItem.code,
+        item_name: selectedSaleItem.name,
+        category: selectedSaleItem.category,
+        quantity,
+        unit_price: unitPrice,
+        total_amount: quantity * unitPrice,
+      },
+    ]);
+    setSaleForm((current) => ({ ...current, code: "", amount: 1, unit_price: "", payment_method: current.payment_method }));
+    setSalesSearchTerm("");
+    setError("");
+    setMessage(`${selectedSaleItem.name} agregado al carrito.`);
+  }
+
+  function removeSaleLine(lineKey) {
+    setSaleCart((current) => current.filter((line) => line.key !== lineKey));
+  }
+
+  function clearSaleCart() {
+    setSaleCart([]);
+  }
+
+  function unlockTreasury(event) {
+    event.preventDefault();
+    if (!accessConfig) return;
+    if (treasuryAccessPassword !== accessConfig.password) {
+      setError("Clave incorrecta para abrir la tesorería privada.");
+      return;
+    }
+    setTreasuryUnlocked(true);
+    setTreasuryAccessPassword("");
+    setError("");
+    setMessage("Tesorería privada desbloqueada.");
   }
   async function submitProduct(event) {
     event.preventDefault();
@@ -329,27 +412,36 @@ function App() {
   async function submitSale(event) {
     event.preventDefault();
     if (!cashSummary.current_session) {
-      setError("Antes de registrar una venta, abri la caja del dia desde Tesoreria.");
-      setActiveSection("treasury");
+      setError("Antes de registrar una venta, abrí la caja del día desde Ventas.");
+      setActiveSection("home");
       setScanState("warning");
       playTone("warning");
+      return;
+    }
+    if (saleCart.length === 0) {
+      setError("Agregá al menos un producto al carrito antes de cobrar.");
       return;
     }
     setSaving(true);
     setError("");
     try {
-      const payload = { code: saleForm.code, amount: Number(saleForm.amount), unit_price: saleForm.unit_price === "" ? null : Number(saleForm.unit_price), payment_method: saleForm.payment_method };
-      const response = await fetch(`${API_URL}/sales`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const payload = {
+        payment_method: saleForm.payment_method,
+        items: saleCart.map((line) => ({ code: line.code, amount: line.quantity, unit_price: line.unit_price })),
+      };
+      const response = await fetch(`${API_URL}/sales/checkout`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo registrar la venta.");
-      setSaleForm(emptySaleForm);
-      setMessage(`Venta registrada para ${data.item_name}. Preparando ticket de impresión.`);
+      setSaleCart([]);
+      setSaleForm((current) => ({ ...emptySaleForm, payment_method: current.payment_method }));
+      setSalesSearchTerm("");
+      setMessage(`Venta ${data.order_number} registrada. Preparando ticket de impresión.`);
       setScanState("success");
       playTone("success");
       await refreshAll();
       const printStarted = printSaleTicket(data, { business: accessConfig, cashierName: accessConfig?.userName || "Mostrador", channelLabel: "Mostrador" });
       if (!printStarted) {
-        setMessage(`Venta registrada para ${data.item_name}. Habilitá las ventanas emergentes para imprimir el ticket.`);
+        setMessage(`Venta ${data.order_number} registrada. Habilitá las ventanas emergentes para imprimir el ticket.`);
       }
       focusScanner();
     } catch (err) {
@@ -532,7 +624,7 @@ function App() {
   }
 
 
-  function printSaleTicket(sale, options) {
+  function printSaleTicket(checkout, options) {
   const printWindow = window.open("", "_blank", "width=420,height=760");
   if (!printWindow) return false;
 
@@ -544,16 +636,26 @@ function App() {
   const businessLogo = business.businessLogoDataUrl || "";
   const cashierLabel = escapeHtml(options?.cashierName || "Mostrador");
   const channelLabel = escapeHtml(options?.channelLabel || "Mostrador");
-  const paymentMethodLabel = escapeHtml(sale.payment_method || "Efectivo");
-  const saleNumber = `V-${String(sale.id).padStart(6, "0")}`;
-  const saleDateTime = formatDateTime(sale.created_at);
-  const subtotal = Number(sale.quantity) * Number(sale.unit_price);
+  const paymentMethodLabel = escapeHtml(checkout.payment_method || "Efectivo");
+  const saleNumber = escapeHtml(checkout.order_number || "Venta local");
+  const saleDateTime = formatDateTime(checkout.created_at);
   const ticketMeta = [
     businessAddress,
     businessWhatsapp ? `WhatsApp ${businessWhatsapp}` : "",
     businessTaxId ? `CUIT ${businessTaxId}` : "",
   ].filter(Boolean).join(" · ");
   const logoMarkup = businessLogo ? `<div class="logo-wrap"><img src="${businessLogo}" alt="Logo del comercio" class="logo" /></div>` : "";
+  const linesMarkup = checkout.sales.map((line) => `
+      <div class="line-item">
+        <div class="line-head">
+          <div>
+            <div class="product-name">${escapeHtml(line.item_name)}</div>
+            <div class="product-meta">${escapeHtml(line.category)} · COD ${escapeHtml(line.code)}</div>
+          </div>
+          <div class="value">${formatMoney(line.total_amount)}</div>
+        </div>
+        <div class="row compact"><span class="label">${formatInteger(line.quantity)} x ${formatMoney(line.unit_price)}</span><span class="value">${formatMoney(line.total_amount)}</span></div>
+      </div>`).join("");
   const html = `<!doctype html>
 <html lang="es">
 <head>
@@ -561,7 +663,6 @@ function App() {
 <title>Ticket ${saleNumber}</title>
 <style>
   @page { size: 80mm auto; margin: 0; }
-  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; background: #efe7dc; color: #1f2937; font-family: "Segoe UI", Arial, sans-serif; }
   .sheet { width: 80mm; min-height: 100vh; margin: 0 auto; background: #fffdfa; padding: 10mm 7mm 8mm; }
@@ -573,11 +674,14 @@ function App() {
   .meta { color: #6b7280; font-size: 10px; line-height: 1.45; }
   .section { margin-top: 14px; }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 11px; }
+  .row.compact { padding: 2px 0 0; }
   .label { color: #6b7280; }
   .value { font-weight: 600; text-align: right; }
-  .product { margin-top: 14px; border: 1px solid #e8dccd; border-radius: 14px; padding: 11px; background: linear-gradient(180deg, #fffdf9 0%, #f8f0e6 100%); }
-  .product-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
-  .product-meta { margin-top: 5px; color: #7b6857; font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; }
+  .lines { margin-top: 14px; border: 1px solid #e8dccd; border-radius: 14px; padding: 11px; background: linear-gradient(180deg, #fffdf9 0%, #f8f0e6 100%); }
+  .line-item + .line-item { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #d7c8b7; }
+  .line-head { display: flex; justify-content: space-between; gap: 12px; }
+  .product-name { font-size: 14px; font-weight: 700; line-height: 1.25; }
+  .product-meta { margin-top: 4px; color: #7b6857; font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; }
   .totals { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; }
   .total-strong { font-size: 16px; font-weight: 700; }
   .foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; text-align: center; }
@@ -602,20 +706,14 @@ function App() {
       <div class="row"><span class="label">Medio de pago</span><span class="value">${paymentMethodLabel}</span></div>
     </section>
 
-    <section class="product">
-      <div class="product-name">${escapeHtml(sale.item_name)}</div>
-      <div class="product-meta">${escapeHtml(sale.category)} · COD ${escapeHtml(sale.code)}</div>
-      <div class="section">
-        <div class="row"><span class="label">Cantidad</span><span class="value">${formatInteger(sale.quantity)}</span></div>
-        <div class="row"><span class="label">Precio unitario</span><span class="value">${formatMoney(sale.unit_price)}</span></div>
-        <div class="row"><span class="label">Subtotal</span><span class="value">${formatMoney(subtotal)}</span></div>
-      </div>
+    <section class="lines">
+      ${linesMarkup}
     </section>
 
     <section class="totals">
-      <div class="row total-strong"><span>Total</span><span>${formatMoney(sale.revenue)}</span></div>
-      <div class="row"><span class="label">Items</span><span class="value">${formatInteger(sale.quantity)}</span></div>
-      <div class="row"><span class="label">Pago</span><span class="value">${paymentMethodLabel}</span></div>
+      <div class="row"><span class="label">Líneas</span><span class="value">${formatInteger(checkout.total_items)}</span></div>
+      <div class="row"><span class="label">Unidades</span><span class="value">${formatInteger(checkout.total_units)}</span></div>
+      <div class="row total-strong"><span>Total</span><span>${formatMoney(checkout.total_amount)}</span></div>
     </section>
 
     <footer class="foot">
@@ -799,7 +897,7 @@ function App() {
               <span aria-hidden="true">{sidebarCollapsed ? "»" : "«"}</span>
             </button>
           </div>
-          <div className="branch-card mt-8 rounded-[28px] p-5">
+          <div className="branch-card mt-8 rounded-[28px] p-2">
             <div className={`flex items-center gap-4 ${sidebarCollapsed ? "justify-center" : ""}`}>
               {businessLogo ? <img src={businessLogo} alt={`Logo de ${branchName}`} className="business-logo h-14 w-14 rounded-2xl object-cover" /> : <div className="avatar-badge flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-semibold">{buildInitials(branchName)}</div>}
               <div className={sidebarCollapsed ? "sidebar-collapse-hidden" : ""}>
@@ -848,9 +946,9 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? <HomeSection reports={reports} cashSummary={cashSummary} inventoryValue={inventoryValue} costValue={costValue} lowStockItems={lowStockItems} latestMovements={latestMovements} branchName={branchName} loading={loading} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} topProduct={reports.top_products[0]} /> : null}
-            {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
-            {activeSection === "treasury" ? <TreasurySection cashSummary={cashSummary} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} saleForm={saleForm} setSaleForm={setSaleForm} submitSale={submitSale} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} paymentMethodOptions={paymentMethodOptions} /> : null}
+            {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={saleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} /> : null}
+            {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
+            {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="Tesorería privada" description="Esta vista concentra recaudación, márgenes y análisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="Ingresá la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorería</button></form></Panel>) : null}
           </section>
         </div>
       </div>
@@ -859,6 +957,19 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

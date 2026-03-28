@@ -8,15 +8,15 @@ export const emptyAccessSetup = { ...emptyBusinessProfile, userName: "", passwor
 export const emptyLoginForm = { userName: "", password: "" };
 
 export const availableThemes = {
-  dark: { label: "Oscuro", modeLabel: "Operacion nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
-  sepia: { label: "Claro sepia", modeLabel: "Operacion calida", summary: "Una variante amable y luminosa para jornadas largas." },
-  enterprise: { label: "Empresarial", modeLabel: "Editorial ejecutivo", summary: "Preset inspirado en Stitch para direccion, metricas y lectura institucional." },
+  dark: { label: "Oscuro", modeLabel: "Operación nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
+  sepia: { label: "Claro sepia", modeLabel: "Operación cálida", summary: "Una variante amable y luminosa para jornadas largas." },
+  enterprise: { label: "Empresarial", modeLabel: "Editorial ejecutivo", summary: "Preset inspirado en Stitch para dirección, métricas y lectura institucional." },
 };
 
 export const navItems = [
-  { id: "home", label: "Inicio", short: "IN" },
-  { id: "inventory", label: "Inventario", short: "IV" },
-  { id: "treasury", label: "Tesorería", short: "TS" },
+  { id: "home", label: "Ventas", short: "VT", icon: "sales" },
+  { id: "inventory", label: "Inventario", short: "IV", icon: "inventory" },
+  { id: "treasury", label: "Tesorería privada", short: "TP", icon: "treasury" },
 ];
 
 export const scanLockMs = 1200;

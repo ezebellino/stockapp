@@ -1,5 +1,15 @@
 ﻿import { forwardRef } from "react";
 
+function SidebarIcon({ icon }) {
+  if (icon === "inventory") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7.5h16M4 12h16M4 16.5h10" strokeLinecap="round" /><path d="M17 15.5l1.8 1.8L21 14.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  }
+  if (icon === "treasury") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 8.5 12 4l8 4.5" strokeLinecap="round" strokeLinejoin="round" /><path d="M6 9.5v7.5M12 9.5v7.5M18 9.5v7.5M4 19.5h16" strokeLinecap="round" /></svg>;
+  }
+  return <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 7h14v10H5z" rx="2" /><path d="M8 10.5h8M8 13.5h5" strokeLinecap="round" /></svg>;
+}
+
 export function Panel({ title, description, action, children }) { return <article className="panel-shell rounded-[30px] p-5 shadow-panel backdrop-blur"><div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h2 className="panel-title text-xl font-semibold">{title}</h2><p className="panel-description mt-1 text-sm">{description}</p></div>{action}</div>{children}</article>; }
 export function ThemeToggle({ theme, themes, onChange }) {
   return (
@@ -13,7 +23,7 @@ export function ThemeToggle({ theme, themes, onChange }) {
   );
 }
 export function LogoUploadField({ label, logoDataUrl, onSelect, onClear }) { return <div><span className="field-label mb-2 block text-sm font-medium">{label}</span><label className="field-input flex cursor-pointer items-center justify-center rounded-2xl border-dashed px-4 py-4 text-center text-sm"><input type="file" accept="image/*" className="hidden" onChange={onSelect} /><span>{logoDataUrl ? "Reemplazar logo" : "Seleccionar imagen"}</span></label>{logoDataUrl ? <div className="soft-card mt-3 flex items-center justify-between gap-4 rounded-2xl p-3"><img src={logoDataUrl} alt="Logo comercio" className="h-14 w-14 rounded-xl object-contain" /><button type="button" onClick={onClear} className="section-button section-button-idle rounded-full px-3 py-2 text-xs font-semibold transition">Quitar logo</button></div> : <div className="panel-description mt-2 text-xs">Opcional. Se guarda localmente y se usa en el ticket.</div>}</div>; }
-export function SidebarLink({ item, active, collapsed = false, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"} ${collapsed ? "sidebar-link-collapsed justify-center px-2" : ""}`} aria-label={item.label} title={item.label}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]">{item.short}</span><span className={collapsed ? "sr-only" : ""}>{item.label}</span></button>; }
+export function SidebarLink({ item, active, collapsed = false, onClick }) { return <button type="button" onClick={onClick} className={`sidebar-link flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${active ? "sidebar-link-active" : "sidebar-link-idle"} ${collapsed ? "sidebar-link-collapsed justify-center px-2" : ""}`} aria-label={item.label} title={item.label}><span className="sidebar-badge flex h-10 w-10 items-center justify-center rounded-xl text-[11px] font-bold uppercase tracking-[0.18em]"><SidebarIcon icon={item.icon} /></span><span className={collapsed ? "sr-only" : ""}>{item.label}</span></button>; }
 export function MetricCard({ label, value, emphasis = false }) { return <div className="metric-card rounded-2xl px-4 py-4"><div className="metric-label text-xs uppercase tracking-[0.22em]">{label}</div><div className={`mt-2 text-2xl font-semibold ${emphasis ? "metric-value-emphasis" : "metric-value"}`}>{value}</div></div>; }
 export function StatusPanel({ message, error }) { if (!message && !error) return null; return <div className={`status-panel mt-4 rounded-2xl border px-4 py-3 text-sm ${error ? "status-panel-error" : "status-panel-success"}`}>{error || message}</div>; }
 export function ScannerStatus({ state }) { const states = { ready: { label: "Lector listo", className: "success-soft text-emerald-100" }, processing: { label: "Procesando lectura", className: "info-box text-sky-100" }, success: { label: "Lectura confirmada", className: "success-soft text-emerald-100" }, warning: { label: "Código nuevo", className: "warning-box text-amber-100" }, error: { label: "Revisar lectura", className: "danger-box text-rose-100" }, blocked: { label: "Doble lectura bloqueada", className: "warning-box text-orange-100" } }; const current = states[state] ?? states.ready; return <div className={`rounded-2xl px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${current.className}`}>{current.label}</div>; }
@@ -49,4 +59,3 @@ export function DailySalesChart({ rows, metric = "revenue", formatMoney, formatI
   const maxValue = Math.max(...values, 1);
   return <div className="daily-sales-chart"><div className="chart-grid">{rows.map((row) => { const currentValue = Number(row[config.key] || 0); return <div key={row.label} className="chart-column"><div className="chart-meta text-xs">{config.format(currentValue, helpers)}</div><div className="chart-bar-wrap"><div className="chart-bar" style={{ height: `${Math.max((currentValue / maxValue) * 100, 8)}%` }} title={`${config.label}: ${config.format(currentValue, helpers)}`} /></div><div className="chart-label text-xs">{row.label}</div><div className="chart-foot text-[11px]">{row.sales_count} ventas</div></div>; })}</div></div>;
 }
-

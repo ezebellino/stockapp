@@ -7,6 +7,8 @@ from ..models import (
     Category,
     CategoryCreate,
     InventoryMovement,
+    SaleCheckoutCreate,
+    SaleCheckoutResult,
     SaleCreate,
     SaleRecord,
     StockAdjustment,
@@ -127,3 +129,12 @@ def create_sale(payload: SaleCreate) -> SaleRecord:
         logger.warning("No se pudo registrar venta para codigo %s: %s", payload.code, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return sale
+
+
+@router.post("/sales/checkout", response_model=SaleCheckoutResult, status_code=status.HTTP_201_CREATED)
+def create_sale_checkout(payload: SaleCheckoutCreate) -> SaleCheckoutResult:
+    try:
+        return repository.record_sale_checkout(payload)
+    except ValueError as exc:
+        logger.warning("No se pudo registrar checkout de venta: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
