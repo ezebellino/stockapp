@@ -1,4 +1,4 @@
-﻿from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field
 
 
 class StockItemBase(BaseModel):
@@ -104,6 +104,22 @@ class CashSessionClose(BaseModel):
     notes: str = Field(default="", max_length=240)
 
 
+class CashMovementCreate(BaseModel):
+    movement_type: str = Field(..., pattern="^(INCOME|EXPENSE)$")
+    amount: float = Field(..., gt=0)
+    concept: str = Field(..., min_length=2, max_length=120)
+    notes: str = Field(default="", max_length=240)
+
+
+class CashMovement(BaseModel):
+    id: int
+    movement_type: str
+    amount: float
+    concept: str
+    notes: str
+    created_at: str
+
+
 class CashSession(BaseModel):
     id: int
     opening_amount: float
@@ -158,8 +174,12 @@ class DailyCashSummary(BaseModel):
     today_revenue: float
     cash_revenue: float
     non_cash_revenue: float
+    manual_income: float
+    manual_expense: float
     today_profit: float
     today_sales_count: int
     today_units_sold: int
     expected_cash_now: float
     recent_sessions: list[CashSession]
+    recent_cash_movements: list[CashMovement]
+

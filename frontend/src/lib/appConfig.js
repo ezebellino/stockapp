@@ -2,6 +2,7 @@
 export const emptySaleForm = { code: "", amount: 1, unit_price: "", payment_method: "Efectivo" };
 export const emptyCashOpenForm = { opening_amount: "", notes: "" };
 export const emptyCashCloseForm = { actual_cash_amount: "", notes: "" };
+export const emptyCashMovementForm = { movement_type: "EXPENSE", amount: "", concept: "", notes: "" };
 export const emptyTreasuryFilter = { startDate: "", endDate: "" };
 export const emptyBusinessProfile = { businessName: "", businessAddress: "", businessWhatsapp: "", businessTaxId: "", businessLogoDataUrl: "" };
 export const emptyAccessSetup = { ...emptyBusinessProfile, userName: "", password: "", confirmPassword: "" };

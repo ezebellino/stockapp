@@ -4,7 +4,7 @@ from io import StringIO
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ..logging_config import get_logger
-from ..models import CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, DailySalesPoint, ReportSummary
+from ..models import CashMovement, CashMovementCreate, CashSession, CashSessionClose, CashSessionOpen, DailyCashSummary, DailySalesPoint, ReportSummary
 from ..repository import repository
 
 
@@ -119,3 +119,21 @@ def close_cash_session(payload: CashSessionClose) -> CashSession:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
+
+
+@router.get("/cash-movements", response_model=list[CashMovement])
+def list_cash_movements(
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[CashMovement]:
+    return repository.list_cash_movements(limit=limit, start_date=start_date, end_date=end_date)
+
+
+@router.post("/cash-movements", response_model=CashMovement, status_code=status.HTTP_201_CREATED)
+def create_cash_movement(payload: CashMovementCreate) -> CashMovement:
+    try:
+        return repository.create_cash_movement(payload)
+    except ValueError as exc:
+        logger.warning("No se pudo registrar movimiento manual de caja: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

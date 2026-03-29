@@ -17,6 +17,9 @@ export default function TreasurySection(props) {
     treasuryFilterActive,
     reports,
     dailySales,
+    cashMovementForm,
+    setCashMovementForm,
+    submitCashMovement,
     handleText,
     formatMoney,
     formatInteger,
@@ -78,7 +81,7 @@ export default function TreasurySection(props) {
         <Panel title="Resumen ejecutivo" description="Esta pantalla queda pensada para el dueño o la administración del comercio.">
           <div className="treasury-summary-grid grid gap-4 sm:grid-cols-2">
             <InsightCard title="Recaudación total" value={formatMoney(cashSummary.today_revenue)} helper="Incluye efectivo y ventas virtuales del período visible." />
-            <InsightCard title="Caja física esperada" value={formatMoney(cashSummary.expected_cash_now)} helper="Solo contempla lo cobrado en efectivo dentro de la caja activa." />
+            <InsightCard title="Caja física esperada" value={formatMoney(cashSummary.expected_cash_now)} helper="Incluye apertura, efectivo vendido e ingresos/egresos manuales del turno." />
             <InsightCard title="Margen estimado" value={cashSummary.today_revenue > 0 ? `${Math.round((cashSummary.today_profit / cashSummary.today_revenue) * 100)}%` : "0%"} helper="Basado en recaudación y costos cargados." />
             <InsightCard title="Ventas virtuales" value={formatMoney(cashSummary.non_cash_revenue)} helper={`${cashSummary.today_units_sold} unidades vendidas en el período.`} />
           </div>
@@ -116,6 +119,57 @@ export default function TreasurySection(props) {
                 Mostrando tesorería desde {treasuryFilter.startDate ? formatDate(treasuryFilter.startDate) : "el inicio"} hasta {treasuryFilter.endDate ? formatDate(treasuryFilter.endDate) : "hoy"}.
               </div>
             ) : null}
+          </Panel>
+
+          <Panel title="Movimientos manuales de caja" description="Registrá ingresos y egresos operativos para que el cierre refleje la caja física real.">
+            <form className="grid gap-4 md:grid-cols-2" onSubmit={submitCashMovement}>
+              <label className="block">
+                <span className="field-label mb-2 block text-sm font-medium">Tipo</span>
+                <select name="movement_type" value={cashMovementForm.movement_type} onChange={handleText(setCashMovementForm)} className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition">
+                  <option value="EXPENSE">Egreso</option>
+                  <option value="INCOME">Ingreso</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="field-label mb-2 block text-sm font-medium">Monto</span>
+                <input name="amount" type="number" min="0.01" step="0.01" value={cashMovementForm.amount} onChange={handleText(setCashMovementForm)} placeholder="0,00" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="field-label mb-2 block text-sm font-medium">Concepto</span>
+                <input name="concept" value={cashMovementForm.concept} onChange={handleText(setCashMovementForm)} placeholder="Proveedor, flete, retiro, fondo extra" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="field-label mb-2 block text-sm font-medium">Notas</span>
+                <input name="notes" value={cashMovementForm.notes} onChange={handleText(setCashMovementForm)} placeholder="Detalle opcional para auditoría" className="field-input w-full rounded-2xl px-4 py-3 text-sm outline-none transition" />
+              </label>
+              <button type="submit" disabled={saving || !cashSummary.current_session} className="primary-button md:col-span-2 rounded-2xl px-4 py-3 text-sm font-semibold">
+                Registrar movimiento
+              </button>
+            </form>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <InsightCard title="Ingresos manuales" value={formatMoney(cashSummary.manual_income)} helper="Suman a la caja física esperada del período." />
+              <InsightCard title="Egresos manuales" value={formatMoney(cashSummary.manual_expense)} helper="Descuentan caja por pagos, compras o retiros." />
+            </div>
+            <div className="mt-5 space-y-3">
+              {(cashSummary.recent_cash_movements ?? []).length === 0 ? (
+                <EmptyState>Todavía no hay movimientos manuales de caja.</EmptyState>
+              ) : (
+                (cashSummary.recent_cash_movements ?? []).map((movement) => (
+                  <div key={movement.id} className="card-surface rounded-2xl px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="content-strong font-medium">{movement.concept}</div>
+                        <div className="content-muted text-xs uppercase tracking-[0.18em]">{movement.movement_type === "INCOME" ? "Ingreso" : "Egreso"} · {formatDateTime(movement.created_at)}</div>
+                      </div>
+                      <div className={`rounded-full px-3 py-1 text-xs font-semibold ${movement.movement_type === "INCOME" ? "success-soft text-emerald-100" : "danger-box text-rose-100"}`}>
+                        {movement.movement_type === "INCOME" ? "+" : "-"}{formatMoney(movement.amount)}
+                      </div>
+                    </div>
+                    {movement.notes ? <div className="soft-card content-default mt-3 rounded-2xl px-4 py-3 text-sm">{movement.notes}</div> : null}
+                  </div>
+                ))
+              )}
+            </div>
           </Panel>
 
           <Panel title="Jornadas registradas" description={treasuryFilterActive ? "Cierres y aperturas del período filtrado." : "Últimos cierres y turnos de caja registrados."}>

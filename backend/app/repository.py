@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import sqlite3
 import unicodedata
@@ -7,6 +7,8 @@ from pathlib import Path
 
 from .logging_config import get_logger
 from .models import (
+    CashMovement,
+    CashMovementCreate,
     CashSession,
     CashSessionClose,
     CashSessionOpen,
@@ -105,6 +107,19 @@ class SQLiteStockRepository:
                     notes TEXT NOT NULL DEFAULT '',
                     opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     closed_at TEXT
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cash_movements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER,
+                    movement_type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    concept TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
             )
@@ -224,6 +239,68 @@ class SQLiteStockRepository:
                     (item_id, limit),
                 ).fetchall()
         return [self._to_movement(row) for row in rows]
+
+    def list_cash_movements(self, *, limit: int = 20, start_date: str | None = None, end_date: str | None = None) -> list[CashMovement]:
+        with self._connect() as connection:
+            if start_date or end_date:
+                rows = connection.execute(
+                    """
+                    SELECT id, movement_type, amount, concept, notes, created_at
+                    FROM cash_movements
+                    WHERE (? IS NULL OR DATE(created_at) >= DATE(?))
+                      AND (? IS NULL OR DATE(created_at) <= DATE(?))
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (start_date, start_date, end_date, end_date, limit),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT id, movement_type, amount, concept, notes, created_at
+                    FROM cash_movements
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [self._to_cash_movement(row) for row in rows]
+
+    def create_cash_movement(self, payload: CashMovementCreate) -> CashMovement:
+        current_session = self.get_current_cash_session()
+        if current_session is None:
+            raise ValueError("No hay una caja abierta para registrar movimientos manuales.")
+
+        movement_type = payload.movement_type.strip().upper()
+        concept = self._canonicalize_label(payload.concept)
+        notes = payload.notes.strip()
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO cash_movements (session_id, movement_type, amount, concept, notes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (current_session.id, movement_type, payload.amount, concept, notes, created_at),
+            )
+            connection.commit()
+            row = connection.execute(
+                """
+                SELECT id, movement_type, amount, concept, notes, created_at
+                FROM cash_movements
+                WHERE id = ?
+                """,
+                (cursor.lastrowid,),
+            ).fetchone()
+        movement = self._to_cash_movement(row)
+        logger.info(
+            "Movimiento manual de caja | sesion_id=%s | tipo=%s | monto=%.2f | concepto=%s",
+            current_session.id,
+            movement.movement_type,
+            movement.amount,
+            movement.concept,
+        )
+        return movement
 
     def create_item(self, payload: StockItemCreate) -> StockItem:
         category_name = self._canonicalize_label(payload.category)
@@ -560,7 +637,18 @@ class SQLiteStockRepository:
                     """,
                     sales_filter_params,
                 ).fetchone()
-                expected_cash_now = today_row["cash_revenue"]
+                cash_row = connection.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN movement_type = 'INCOME' THEN amount ELSE 0 END), 0) AS manual_income,
+                        COALESCE(SUM(CASE WHEN movement_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS manual_expense
+                    FROM cash_movements
+                    WHERE (? IS NULL OR DATE(created_at) >= DATE(?))
+                      AND (? IS NULL OR DATE(created_at) <= DATE(?))
+                    """,
+                    (start_date, start_date, end_date, end_date),
+                ).fetchone()
+                expected_cash_now = today_row["cash_revenue"] + cash_row["manual_income"] - cash_row["manual_expense"]
                 session_filter_sql, session_filter_params = self._build_session_period_filter(start_date=start_date, end_date=end_date)
                 recent_rows = connection.execute(
                     f"""
@@ -571,6 +659,17 @@ class SQLiteStockRepository:
                     LIMIT 10
                     """,
                     session_filter_params,
+                ).fetchall()
+                recent_cash_rows = connection.execute(
+                    """
+                    SELECT id, movement_type, amount, concept, notes, created_at
+                    FROM cash_movements
+                    WHERE (? IS NULL OR DATE(created_at) >= DATE(?))
+                      AND (? IS NULL OR DATE(created_at) <= DATE(?))
+                    ORDER BY id DESC
+                    LIMIT 10
+                    """,
+                    (start_date, start_date, end_date, end_date),
                 ).fetchall()
             elif current_session is None:
                 today_row = connection.execute(
@@ -583,16 +682,33 @@ class SQLiteStockRepository:
                         COALESCE(SUM(CASE WHEN payment_method <> 'Efectivo' THEN total_amount ELSE 0 END), 0) AS non_cash_revenue,
                         COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS total_profit
                     FROM sales
-                    WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
+                    WHERE DATE(created_at) = DATE('now', 'localtime')
                     """
                 ).fetchone()
-                expected_cash_now = today_row["cash_revenue"]
+                cash_row = connection.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN movement_type = 'INCOME' THEN amount ELSE 0 END), 0) AS manual_income,
+                        COALESCE(SUM(CASE WHEN movement_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS manual_expense
+                    FROM cash_movements
+                    WHERE DATE(created_at) = DATE('now', 'localtime')
+                    """
+                ).fetchone()
+                expected_cash_now = today_row["cash_revenue"] + cash_row["manual_income"] - cash_row["manual_expense"]
                 recent_rows = connection.execute(
                     """
                     SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
                     FROM cash_sessions
                     ORDER BY id DESC
                     LIMIT 7
+                    """
+                ).fetchall()
+                recent_cash_rows = connection.execute(
+                    """
+                    SELECT id, movement_type, amount, concept, notes, created_at
+                    FROM cash_movements
+                    ORDER BY id DESC
+                    LIMIT 10
                     """
                 ).fetchall()
             else:
@@ -610,7 +726,17 @@ class SQLiteStockRepository:
                     """,
                     (current_session.opened_at,),
                 ).fetchone()
-                expected_cash_now = current_session.opening_amount + today_row["cash_revenue"]
+                cash_row = connection.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN movement_type = 'INCOME' THEN amount ELSE 0 END), 0) AS manual_income,
+                        COALESCE(SUM(CASE WHEN movement_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS manual_expense
+                    FROM cash_movements
+                    WHERE session_id = ?
+                    """,
+                    (current_session.id,),
+                ).fetchone()
+                expected_cash_now = current_session.opening_amount + today_row["cash_revenue"] + cash_row["manual_income"] - cash_row["manual_expense"]
                 recent_rows = connection.execute(
                     """
                     SELECT id, opening_amount, actual_cash_amount, difference_amount, status, notes, opened_at, closed_at
@@ -619,17 +745,30 @@ class SQLiteStockRepository:
                     LIMIT 7
                     """
                 ).fetchall()
+                recent_cash_rows = connection.execute(
+                    """
+                    SELECT id, movement_type, amount, concept, notes, created_at
+                    FROM cash_movements
+                    WHERE session_id = ?
+                    ORDER BY id DESC
+                    LIMIT 10
+                    """,
+                    (current_session.id,),
+                ).fetchall()
 
         return DailyCashSummary(
             current_session=None if (start_date or end_date) else current_session,
             today_revenue=today_row["total_revenue"],
             cash_revenue=today_row["cash_revenue"],
             non_cash_revenue=today_row["non_cash_revenue"],
+            manual_income=cash_row["manual_income"],
+            manual_expense=cash_row["manual_expense"],
             today_profit=today_row["total_profit"],
             today_sales_count=today_row["total_sales_count"],
             today_units_sold=today_row["total_units_sold"],
             expected_cash_now=expected_cash_now,
-            recent_sessions=[self._to_cash_session(row) for row in recent_rows],
+            recent_sessions=[self._with_expected_cash(row) for row in recent_rows],
+            recent_cash_movements=[self._to_cash_movement(row) for row in recent_cash_rows],
         )
     def get_current_cash_session(self) -> CashSession | None:
         with self._connect() as connection:
@@ -650,13 +789,14 @@ class SQLiteStockRepository:
         if self.get_current_cash_session() is not None:
             raise ValueError("Ya existe una caja abierta.")
 
+        opened_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO cash_sessions (opening_amount, notes, status)
-                VALUES (?, ?, 'OPEN')
+                INSERT INTO cash_sessions (opening_amount, notes, status, opened_at)
+                VALUES (?, ?, 'OPEN', ?)
                 """,
-                (payload.opening_amount, payload.notes.strip()),
+                (payload.opening_amount, payload.notes.strip(), opened_at),
             )
             connection.commit()
             row = connection.execute(
@@ -677,17 +817,19 @@ class SQLiteStockRepository:
             raise ValueError("No hay una caja abierta para cerrar.")
 
         difference_amount = payload.actual_cash_amount - current_session.expected_cash_amount
+        closed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with self._connect() as connection:
             connection.execute(
                 """
                 UPDATE cash_sessions
-                SET actual_cash_amount = ?, difference_amount = ?, notes = ?, status = 'CLOSED', closed_at = CURRENT_TIMESTAMP
+                SET actual_cash_amount = ?, difference_amount = ?, notes = ?, status = 'CLOSED', closed_at = ?
                 WHERE id = ?
                 """,
                 (
                     payload.actual_cash_amount,
                     difference_amount,
                     payload.notes.strip(),
+                    closed_at,
                     current_session.id,
                 ),
             )
@@ -872,6 +1014,22 @@ class SQLiteStockRepository:
             if "order_number" not in sales_columns:
                 connection.execute("ALTER TABLE sales ADD COLUMN order_number TEXT")
                 logger.info("Se agrego la columna order_number a sales.")
+            cash_movement_columns = {row["name"] for row in connection.execute("PRAGMA table_info(cash_movements)").fetchall()}
+            if not cash_movement_columns:
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS cash_movements (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id INTEGER,
+                        movement_type TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        concept TEXT NOT NULL,
+                        notes TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                logger.info("Se creó la tabla cash_movements para movimientos manuales de caja.")
             connection.execute(
                 """
                 UPDATE sales
@@ -990,14 +1148,14 @@ class SQLiteStockRepository:
             rows = connection.execute(
                 f"""
                 SELECT
-                    DATE(created_at, 'localtime') AS sale_date,
+                    DATE(created_at) AS sale_date,
                     COUNT(*) AS sales_count,
                     COALESCE(SUM(quantity), 0) AS units_sold,
                     COALESCE(SUM(total_amount), 0) AS revenue,
                     COALESCE(SUM(quantity * (unit_price - cost_price)), 0) AS profit
                 FROM sales
                 {sales_filter_sql}
-                GROUP BY DATE(created_at, 'localtime')
+                GROUP BY DATE(created_at)
                 ORDER BY sale_date DESC
                 LIMIT ?
                 """,
@@ -1018,6 +1176,8 @@ class SQLiteStockRepository:
         ]
 
     def _with_expected_cash(self, row: sqlite3.Row) -> CashSession:
+        opened_at = self._normalize_session_timestamp(row["opened_at"])
+        closed_at = self._normalize_session_timestamp(row["closed_at"])
         with self._connect() as connection:
             revenue_row = connection.execute(
                 """
@@ -1026,9 +1186,21 @@ class SQLiteStockRepository:
                 WHERE created_at >= ?
                 AND (? IS NULL OR created_at <= ?)
                 """,
-                (row["opened_at"], row["closed_at"], row["closed_at"]),
+                (opened_at, closed_at, closed_at),
             ).fetchone()
-        expected_cash_amount = row["opening_amount"] + revenue_row["total_revenue"]
+            movement_row = connection.execute(
+                """
+                SELECT
+                    COALESCE(SUM(CASE WHEN movement_type = 'INCOME' THEN amount ELSE 0 END), 0) AS manual_income,
+                    COALESCE(SUM(CASE WHEN movement_type = 'EXPENSE' THEN amount ELSE 0 END), 0) AS manual_expense
+                FROM cash_movements
+                WHERE (session_id = ? OR session_id IS NULL)
+                  AND created_at >= ?
+                  AND (? IS NULL OR created_at <= ?)
+                """,
+                (row["id"], opened_at, closed_at, closed_at),
+            ).fetchone()
+        expected_cash_amount = row["opening_amount"] + revenue_row["total_revenue"] + movement_row["manual_income"] - movement_row["manual_expense"]
         return CashSession(
             id=row["id"],
             opening_amount=row["opening_amount"],
@@ -1037,8 +1209,8 @@ class SQLiteStockRepository:
             difference_amount=row["difference_amount"],
             status=row["status"],
             notes=row["notes"],
-            opened_at=row["opened_at"],
-            closed_at=row["closed_at"],
+            opened_at=opened_at,
+            closed_at=closed_at,
         )
 
     @staticmethod
@@ -1094,10 +1266,10 @@ class SQLiteStockRepository:
         clauses: list[str] = []
         params: list[str] = []
         if start_date:
-            clauses.append("DATE(created_at, 'localtime') >= DATE(?)")
+            clauses.append("DATE(created_at) >= DATE(?)")
             params.append(start_date)
         if end_date:
-            clauses.append("DATE(created_at, 'localtime') <= DATE(?)")
+            clauses.append("DATE(created_at) <= DATE(?)")
             params.append(end_date)
         sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         return sql, tuple(params)
@@ -1107,13 +1279,29 @@ class SQLiteStockRepository:
         clauses: list[str] = []
         params: list[str] = []
         if start_date:
-            clauses.append("DATE(opened_at, 'localtime') >= DATE(?)")
+            clauses.append("DATE(opened_at) >= DATE(?)")
             params.append(start_date)
         if end_date:
-            clauses.append("DATE(opened_at, 'localtime') <= DATE(?)")
+            clauses.append("DATE(opened_at) <= DATE(?)")
             params.append(end_date)
         sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         return sql, tuple(params)
+
+    @staticmethod
+    def _normalize_session_timestamp(value: str | None) -> str | None:
+        if not value:
+            return value
+        try:
+            parsed = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return value
+        local_now = datetime.now()
+        if parsed <= local_now + timedelta(hours=1):
+            return value
+        offset = local_now - datetime.utcnow()
+        normalized = parsed + offset
+        return normalized.strftime("%Y-%m-%d %H:%M:%S")
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
@@ -1167,6 +1355,17 @@ class SQLiteStockRepository:
         )
 
     @staticmethod
+    def _to_cash_movement(row: sqlite3.Row) -> CashMovement:
+        return CashMovement(
+            id=row["id"],
+            movement_type=row["movement_type"],
+            amount=row["amount"],
+            concept=row["concept"],
+            notes=row["notes"],
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
     def _to_cash_session(row: sqlite3.Row) -> CashSession:
         return CashSession(
             id=row["id"],
@@ -1205,6 +1404,16 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
+
+
+
+
+
+
+
+
+
 
 
 

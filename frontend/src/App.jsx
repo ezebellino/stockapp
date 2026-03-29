@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Swal from "sweetalert2";
 import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, SidebarLink, StatusPanel, ThemeToggle } from "./components/AppUI";
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
 import TreasurySection from "./sections/TreasurySection";
-import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, paymentMethodOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
+import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashMovementForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, paymentMethodOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
 import { buildBusinessProfileForm, buildDateQuery, buildInitials, buildTreasuryPresetFilter, createEmptyCashSummary, createEmptyReports, escapeHtml, formatDate, formatDateTime, formatInteger, formatMoney, handleText, normalizeProductForm, normalizeText, readLocalJson, sectionDescription, sectionEyebrow, sectionTitle } from "./lib/appHelpers";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
 function App() {
@@ -19,6 +20,7 @@ function App() {
   const [saleCart, setSaleCart] = useState([]);
   const [cashOpenForm, setCashOpenForm] = useState(emptyCashOpenForm);
   const [cashCloseForm, setCashCloseForm] = useState(emptyCashCloseForm);
+  const [cashMovementForm, setCashMovementForm] = useState(emptyCashMovementForm);
   const [treasuryFilter, setTreasuryFilter] = useState(emptyTreasuryFilter);
   const [treasuryPreset, setTreasuryPreset] = useState("all");
   const [treasuryMetric, setTreasuryMetric] = useState("revenue");
@@ -453,6 +455,46 @@ function App() {
     }
   }
 
+  async function showCashCloseSummary(session, summarySnapshot) {
+    const difference = Number(session.difference_amount || 0);
+    const expectedCash = Number(session.expected_cash_amount || 0);
+    const actualCash = Number(session.actual_cash_amount || 0);
+    const statusLabel = difference > 0 ? "Sobrante físico de caja" : difference < 0 ? "Faltante físico de caja" : "Cierre físico exacto";
+    const icon = difference > 0 ? "success" : difference < 0 ? "warning" : "info";
+    const statusTone = difference > 0 ? "#047857" : difference < 0 ? "#b45309" : "#1d4ed8";
+    const differenceDisplay = formatMoney(Math.abs(difference));
+    const notesMarkup = session.notes
+      ? `<div style="margin-top:12px;padding:12px 14px;border-radius:14px;background:#f8f0e6;color:#4b5563;text-align:left;"><strong>Observaciones:</strong><div style="margin-top:4px;">${escapeHtml(session.notes)}</div></div>`
+      : "";
+
+    await Swal.fire({
+      icon,
+      title: statusLabel,
+      confirmButtonText: "Entendido",
+      confirmButtonColor: "#1f2937",
+      background: "#fffaf3",
+      color: "#1f2937",
+      width: 560,
+      html:
+        `<div style="display:grid;gap:12px;text-align:left;margin-top:10px;">` +
+        `<div style="padding:14px 16px;border-radius:18px;background:${difference === 0 ? "#eff6ff" : difference > 0 ? "#ecfdf5" : "#fff7ed"};border:1px solid ${difference === 0 ? "#bfdbfe" : difference > 0 ? "#a7f3d0" : "#fed7aa"};">` +
+        `<div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Resultado del cierre</div>` +
+        `<div style="margin-top:6px;font-size:28px;font-weight:700;color:${statusTone};">${difference === 0 ? formatMoney(0) : differenceDisplay}</div>` +
+        `<div style="margin-top:6px;color:#6b7280;">${difference > 0 ? "Hay más efectivo físico del esperado en caja." : difference < 0 ? "Falta efectivo físico respecto de lo que debía quedar en caja." : "El efectivo físico coincide con lo esperado para el turno."}</div>` +
+        `</div>` +
+        `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Efectivo que debía quedar</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(expectedCash)}</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Efectivo contado al cierre</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(actualCash)}</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Ventas en efectivo</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(summarySnapshot.cashRevenue)}</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Cobros virtuales del turno</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(summarySnapshot.nonCashRevenue)}</div></div>` +
+        `</div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Cómo se calcula la caja física</div><div style="margin-top:6px;font-size:16px;font-weight:600;">Apertura + ventas en efectivo + ingresos manuales - egresos manuales</div><div style="margin-top:6px;color:#6b7280;">Los cobros virtuales no quedan en esta caja. Se registran aparte para control y conciliación.</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Actividad del turno</div><div style="margin-top:6px;font-size:16px;font-weight:600;">${summarySnapshot.salesCount} ventas registradas · ${summarySnapshot.unitsSold} unidades cobradas</div></div>` +
+        notesMarkup +
+        `</div>`,
+    });
+  }
+
   async function submitCashOpen(event) {
     event.preventDefault();
     setSaving(true);
@@ -477,11 +519,45 @@ function App() {
     setSaving(true);
     setError("");
     try {
+      const summarySnapshot = {
+        cashRevenue: cashSummary.cash_revenue,
+        nonCashRevenue: cashSummary.non_cash_revenue,
+        salesCount: cashSummary.today_sales_count,
+        unitsSold: cashSummary.today_units_sold,
+      };
       const response = await fetch(`${API_URL}/cash-session/close`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actual_cash_amount: Number(cashCloseForm.actual_cash_amount), notes: cashCloseForm.notes }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo cerrar la caja.");
       setCashCloseForm(emptyCashCloseForm);
-      setMessage(`Caja cerrada. Diferencia: ${formatMoney(data.difference_amount || 0)}.`);
+      setMessage(`Caja cerrada. Diferencia física final: ${formatMoney(data.difference_amount || 0)}.`);
+      await refreshAll();
+      await showCashCloseSummary(data, summarySnapshot);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitCashMovement(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/cash-movements`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          movement_type: cashMovementForm.movement_type,
+          amount: Number(cashMovementForm.amount),
+          concept: cashMovementForm.concept,
+          notes: cashMovementForm.notes,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "No se pudo registrar el movimiento manual de caja.");
+      setCashMovementForm(emptyCashMovementForm);
+      setMessage(`${data.movement_type === "INCOME" ? "Ingreso" : "Egreso"} manual registrado: ${data.concept} por ${formatMoney(data.amount)}.`);
       await refreshAll();
     } catch (err) {
       setError(err.message);
@@ -948,7 +1024,7 @@ function App() {
           <section className="mt-6">
             {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={saleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} /> : null}
             {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
-            {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="TesorerÃ­a privada" description="Esta vista concentra recaudaciÃ³n, mÃ¡rgenes y anÃ¡lisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="IngresÃ¡ la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorerÃ­a</button></form></Panel>) : null}
+            {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} cashMovementForm={cashMovementForm} setCashMovementForm={setCashMovementForm} submitCashMovement={submitCashMovement} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="TesorerÃ­a privada" description="Esta vista concentra recaudaciÃ³n, mÃ¡rgenes y anÃ¡lisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="IngresÃ¡ la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorerÃ­a</button></form></Panel>) : null}
           </section>
         </div>
       </div>
@@ -957,6 +1033,7 @@ function App() {
 }
 
 export default App;
+
 
 
 
