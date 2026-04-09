@@ -183,3 +183,48 @@ class DailyCashSummary(BaseModel):
     recent_sessions: list[CashSession]
     recent_cash_movements: list[CashMovement]
 
+
+class ScaleConfig(BaseModel):
+    enabled: bool = False
+    provider: str = Field(default="mock", pattern="^(mock|serial)$")
+    connection_type: str = Field(default="manual", pattern="^(manual|serial|hid|tcp|bluetooth)$")
+    port: str = Field(default="", max_length=80)
+    baudrate: int = Field(default=9600, ge=1200, le=115200)
+    host: str = Field(default="", max_length=120)
+    tcp_port: int = Field(default=0, ge=0, le=65535)
+    unit: str = Field(default="kg", pattern="^(kg|g)$")
+    timeout_ms: int = Field(default=1200, ge=100, le=10000)
+    stable_read_count: int = Field(default=2, ge=1, le=10)
+    simulated_weight: float = Field(default=1.250, ge=0, le=9999)
+
+
+class ScaleStatus(BaseModel):
+    configured: bool
+    enabled: bool
+    provider: str
+    connection_type: str
+    ready: bool
+    serial_supported: bool
+    available_providers: list[str]
+    detail: str
+
+
+class ScaleReadRequest(BaseModel):
+    simulated_weight: float | None = Field(default=None, ge=0, le=9999)
+
+
+class ScaleReadResult(BaseModel):
+    provider: str
+    connection_type: str
+    weight: float
+    unit: str
+    stable: bool
+    raw_value: str
+    measured_at: str
+
+
+class SerialPortInfo(BaseModel):
+    device: str
+    description: str
+    hwid: str
+

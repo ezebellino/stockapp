@@ -4,9 +4,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .device_service import device_service
 from .logging_config import get_logger
 from .repository import repository
-from .routers import items, reports
+from .routers import devices, items, reports
 
 logger = get_logger("api")
 
@@ -15,6 +16,7 @@ logger = get_logger("api")
 async def lifespan(_: FastAPI):
     logger.info("Inicializando backend local.")
     repository.initialize()
+    device_service.initialize()
     yield
     logger.info("Cierre de backend local.")
 
@@ -50,6 +52,7 @@ async def log_server_errors(request: Request, call_next):
 
 app.include_router(items.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(devices.router, prefix="/api")
 
 
 @app.get("/health")

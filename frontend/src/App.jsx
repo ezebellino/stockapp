@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 import Swal from "sweetalert2";
 import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, SidebarLink, StatusPanel, ThemeToggle } from "./components/AppUI";
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
 import TreasurySection from "./sections/TreasurySection";
-import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashMovementForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyTreasuryFilter, navItems, paymentMethodOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
+import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBusinessProfile, emptyCashCloseForm, emptyCashMovementForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyScaleConfig, emptyTreasuryFilter, guidedTourEnabledStorageKey, guidedTourSeenStorageKey, navItems, paymentMethodOptions, scaleConnectionOptions, scaleProviderOptions, scaleUnitOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
 import { buildBusinessProfileForm, buildDateQuery, buildInitials, buildTreasuryPresetFilter, createEmptyCashSummary, createEmptyReports, escapeHtml, formatDate, formatDateTime, formatInteger, formatMoney, handleText, normalizeProductForm, normalizeText, readLocalJson, sectionDescription, sectionEyebrow, sectionTitle } from "./lib/appHelpers";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
+const API_BASE = API_URL.endsWith("/api") ? API_URL.slice(0, -4) : API_URL;
 function App() {
   const [items, setItems] = useState([]);
   const [reports, setReports] = useState(createEmptyReports());
@@ -47,11 +50,17 @@ function App() {
   const [accessSetupForm, setAccessSetupForm] = useState(emptyAccessSetup);
   const [businessProfileForm, setBusinessProfileForm] = useState(emptyBusinessProfile);
   const [loginForm, setLoginForm] = useState(emptyLoginForm);
+  const [scaleConfig, setScaleConfig] = useState(emptyScaleConfig);
+  const [scaleStatus, setScaleStatus] = useState({ configured: false, enabled: false, provider: "mock", connection_type: "manual", ready: false, serial_supported: false, available_providers: ["mock"], detail: "Sin inicializar." });
+  const [scaleReadResult, setScaleReadResult] = useState(null);
+  const [serialPorts, setSerialPorts] = useState([]);
+  const [guidedTourEnabled, setGuidedTourEnabled] = useState(true);
   const scanInputRef = useRef(null);
   const audioContextRef = useRef(null);
   const lastScanRef = useRef({ code: "", time: 0 });
   const themeTransitionTimeoutRef = useRef(null);
   const themeCommitTimeoutRef = useRef(null);
+  const tourDriverRef = useRef(null);
 
   useEffect(() => {
     refreshAll();
@@ -67,6 +76,8 @@ function App() {
     const savedSection = window.localStorage.getItem(activeSectionStorageKey);
     if (savedSection && navItems.some((item) => item.id === savedSection)) setActiveSection(savedSection);
     if (window.localStorage.getItem(sidebarCollapsedStorageKey) === "true") setSidebarCollapsed(true);
+    const savedTourEnabled = window.localStorage.getItem(guidedTourEnabledStorageKey);
+    if (savedTourEnabled != null) setGuidedTourEnabled(savedTourEnabled === "true");
   }, []);
 
   useEffect(() => {
@@ -82,6 +93,17 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(sidebarCollapsedStorageKey, String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    window.localStorage.setItem(guidedTourEnabledStorageKey, String(guidedTourEnabled));
+  }, [guidedTourEnabled]);
+
+  useEffect(() => {
+    if (!sessionOpen || !guidedTourEnabled || activeSection !== "home") return undefined;
+    if (window.localStorage.getItem(guidedTourSeenStorageKey) === "true") return undefined;
+    const timeoutId = window.setTimeout(() => startGuidedTour(), 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [sessionOpen, guidedTourEnabled, activeSection]);
 
   useEffect(() => {
     if (!sessionOpen) return undefined;
@@ -114,6 +136,15 @@ function App() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [activeSection, sessionOpen]);
+
+  useEffect(() => {
+    if (editingId || scanCandidate) return;
+    if (categories.length === 0) return;
+    const hasCurrentCategory = categories.some((category) => normalizeText(category.name) === normalizeText(productForm.category));
+    if (!hasCurrentCategory) {
+      setProductForm((current) => ({ ...current, category: categories[0].name }));
+    }
+  }, [categories, editingId, productForm.category, scanCandidate]);
 
   const lowStockItems = useMemo(() => items.filter((item) => item.quantity <= item.min_quantity), [items]);
   const filteredItems = useMemo(() => {
@@ -170,6 +201,8 @@ function App() {
     setLoading(true);
     setError("");
     try {
+      const healthResponse = await fetch(`${API_BASE}/health`);
+      if (!healthResponse.ok) throw new Error("El backend local respondió con error.");
       const treasuryQuery = buildDateQuery(filters);
       const [itemsResponse, reportsResponse, movementsResponse, cashResponse, categoriesResponse, dailySalesResponse] = await Promise.all([
         fetch(`${API_URL}/items`),
@@ -197,8 +230,24 @@ function App() {
       if (!categoriesData.some((category) => category.name === productForm.category) && categoriesData.length > 0 && !editingId && !scanCandidate) {
         setProductForm((current) => ({ ...current, category: categoriesData[0].name }));
       }
+      const [scaleConfigResult, scaleStatusResult, scalePortsResult] = await Promise.allSettled([
+        fetch(`${API_URL}/devices/scale/config`),
+        fetch(`${API_URL}/devices/scale/status`),
+        fetch(`${API_URL}/devices/scale/ports`),
+      ]);
+      if (scaleConfigResult.status === "fulfilled" && scaleConfigResult.value.ok) {
+        setScaleConfig(await scaleConfigResult.value.json());
+      }
+      if (scaleStatusResult.status === "fulfilled" && scaleStatusResult.value.ok) {
+        setScaleStatus(await scaleStatusResult.value.json());
+      }
+      if (scalePortsResult.status === "fulfilled" && scalePortsResult.value.ok) {
+        setSerialPorts(await scalePortsResult.value.json());
+      } else {
+        setSerialPorts([]);
+      }
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof TypeError ? "No se pudo conectar con el backend local. Verificá que FastAPI esté levantado en http://127.0.0.1:8001." : err.message);
       setScanState("error");
     } finally {
       setLoading(false);
@@ -278,10 +327,120 @@ function App() {
     event.target.value = "";
   }
 
+  function handleScaleField(event) {
+    const { name, value } = event.target;
+    setScaleConfig((current) => ({
+      ...current,
+      [name]: ["baudrate", "tcp_port", "timeout_ms", "stable_read_count", "simulated_weight"].includes(name) ? Number(value) : value,
+    }));
+  }
+
+  function handleScaleEnabledChange(event) {
+    const { checked } = event.target;
+    setScaleConfig((current) => ({ ...current, enabled: checked }));
+  }
+
+  async function saveScaleConfig(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/devices/scale/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scaleConfig),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "No se pudo guardar la configuración de la balanza.");
+      setScaleConfig(data);
+      const statusResponse = await fetch(`${API_URL}/devices/scale/status`);
+      const statusData = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(statusData.detail || "No se pudo verificar el estado de la balanza.");
+      setScaleStatus(statusData);
+      setMessage("Configuración de balanza guardada.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testScaleRead() {
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/devices/scale/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ simulated_weight: scaleConfig.simulated_weight }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "No se pudo leer la balanza.");
+      setScaleReadResult(data);
+      const statusResponse = await fetch(`${API_URL}/devices/scale/status`);
+      const statusData = await statusResponse.json();
+      if (statusResponse.ok) setScaleStatus(statusData);
+      setMessage(`Lectura recibida: ${data.weight} ${data.unit}.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function clearLogo(setter) {
     setter((current) => ({ ...current, businessLogoDataUrl: "" }));
   }
 
+  async function refreshScalePorts() {
+    try {
+      const response = await fetch(`${API_URL}/devices/scale/ports`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "No se pudo listar los puertos COM.");
+      setSerialPorts(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function toggleGuidedTour() {
+    setGuidedTourEnabled((current) => {
+      const next = !current;
+      if (!next && tourDriverRef.current) {
+        tourDriverRef.current.destroy();
+        tourDriverRef.current = null;
+      }
+      return next;
+    });
+  }
+
+  function startGuidedTour() {
+    if (!guidedTourEnabled) return;
+    if (tourDriverRef.current) tourDriverRef.current.destroy();
+    const tour = driver({
+      showProgress: true,
+      allowClose: true,
+      nextBtnText: "Siguiente",
+      prevBtnText: "Anterior",
+      doneBtnText: "Listo",
+      steps: [
+        { element: "#tour-sidebar", popover: { title: "Navegación", description: "Desde acá se cambia entre ventas, inventario y tesorería privada." } },
+        { element: "#tour-nav-home", popover: { title: "Ventas", description: "Es la vista operativa del mostrador. Caja, carrito y cobro rápido." } },
+        { element: "#tour-nav-inventory", popover: { title: "Inventario", description: "Alta, edición, stock, escáner y catálogo de productos." } },
+        { element: "#tour-nav-treasury", popover: { title: "Tesorería privada", description: "Vista sensible para análisis, caja y reportes del dueño." } },
+        { element: "#tour-topbar", popover: { title: "Cabecera", description: "Muestra el contexto actual y permite cambiar tema o lanzar la guía." } },
+        { element: "#tour-home-sales", popover: { title: "Puesto de venta", description: "Acá se arma el carrito y se registran ventas con ticket." } },
+        { element: "#tour-home-devices", popover: { title: "Dispositivos", description: "Acá se configura la balanza local, el puerto COM y la lectura de prueba." } },
+        { element: "#tour-home-profile", popover: { title: "Perfil comercial", description: "Datos del negocio que se usan en la identidad del sistema y en el ticket." } },
+      ],
+      onDestroyed: () => {
+        window.localStorage.setItem(guidedTourSeenStorageKey, "true");
+        tourDriverRef.current = null;
+      },
+    });
+    tourDriverRef.current = tour;
+    tour.drive();
+  }
   function handleLogin(event) {
     event.preventDefault();
     if (!accessConfig) return;
@@ -394,18 +553,65 @@ function App() {
 
   async function submitCategory(event) {
     event.preventDefault();
+    const normalizedName = newCategoryName.trim();
+    if (normalizedName.length < 2) {
+      setError("Escribí una categoría de al menos 2 caracteres.");
+      return;
+    }
+    const existingCategory = categories.find((category) => normalizeText(category.name) === normalizeText(normalizedName));
+    if (existingCategory) {
+      setProductForm((current) => ({ ...current, category: existingCategory.name }));
+      setNewCategoryName("");
+      setError("");
+      setMessage(`La categoría ${existingCategory.name} ya existía y quedó seleccionada.`);
+      await Swal.fire({
+        icon: "info",
+        title: "Categoría existente",
+        text: `La categoría ${existingCategory.name} ya existía y quedó seleccionada.`,
+        confirmButtonText: "Entendido",
+      });
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const response = await fetch(`${API_URL}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newCategoryName }) });
-      const data = await response.json();
+      const response = await fetch(`${API_URL}/categories`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: normalizedName }) });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        const duplicatedCategory = categories.find((category) => normalizeText(category.name) === normalizeText(normalizedName));
+        if (duplicatedCategory) {
+          setProductForm((current) => ({ ...current, category: duplicatedCategory.name }));
+          setNewCategoryName("");
+          setMessage(`La categoría ${duplicatedCategory.name} ya existía y quedó seleccionada.`);
+          await Swal.fire({
+            icon: "info",
+            title: "Categoría existente",
+            text: `La categoría ${duplicatedCategory.name} ya existía y quedó seleccionada.`,
+            confirmButtonText: "Entendido",
+          });
+          return;
+        }
+      }
       if (!response.ok) throw new Error(data.detail || "No se pudo guardar la categoría.");
       setCategories((current) => [...current, data].sort((a, b) => a.name.localeCompare(b.name)));
       setProductForm((current) => ({ ...current, category: data.name }));
       setNewCategoryName("");
       setMessage(`Categoría creada: ${data.name}.`);
+      await Swal.fire({
+        icon: "success",
+        title: "Categoría guardada",
+        text: `La categoría ${data.name} quedó disponible para seleccionar en productos.`,
+        confirmButtonText: "Perfecto",
+      });
     } catch (err) {
-      setError(err.message);
+      const nextError = err instanceof TypeError ? "No se pudo conectar con el backend para guardar la categoría." : err.message;
+      setError(nextError);
+      await Swal.fire({
+        icon: "error",
+        title: "No se pudo guardar la categoría",
+        text: nextError,
+        confirmButtonText: "Entendido",
+      });
     } finally {
       setSaving(false);
     }
@@ -459,7 +665,7 @@ function App() {
     const difference = Number(session.difference_amount || 0);
     const expectedCash = Number(session.expected_cash_amount || 0);
     const actualCash = Number(session.actual_cash_amount || 0);
-    const statusLabel = difference > 0 ? "Sobrante f�sico de caja" : difference < 0 ? "Faltante f�sico de caja" : "Cierre f�sico exacto";
+    const statusLabel = difference > 0 ? "Sobrante físico de caja" : difference < 0 ? "Faltante físico de caja" : "Cierre físico exacto";
     const icon = difference > 0 ? "success" : difference < 0 ? "warning" : "info";
     const statusTone = difference > 0 ? "#047857" : difference < 0 ? "#b45309" : "#1d4ed8";
     const differenceDisplay = formatMoney(Math.abs(difference));
@@ -480,16 +686,16 @@ function App() {
         `<div style="padding:14px 16px;border-radius:18px;background:${difference === 0 ? "#eff6ff" : difference > 0 ? "#ecfdf5" : "#fff7ed"};border:1px solid ${difference === 0 ? "#bfdbfe" : difference > 0 ? "#a7f3d0" : "#fed7aa"};">` +
         `<div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Resultado del cierre</div>` +
         `<div style="margin-top:6px;font-size:28px;font-weight:700;color:${statusTone};">${difference === 0 ? formatMoney(0) : differenceDisplay}</div>` +
-        `<div style="margin-top:6px;color:#6b7280;">${difference > 0 ? "Hay m�s efectivo f�sico del esperado en caja." : difference < 0 ? "Falta efectivo f�sico respecto de lo que deb�a quedar en caja." : "El efectivo f�sico coincide con lo esperado para el turno."}</div>` +
+        `<div style="margin-top:6px;color:#6b7280;">${difference > 0 ? "Hay más efectivo físico del esperado en caja." : difference < 0 ? "Falta efectivo físico respecto de lo que debía quedar en caja." : "El efectivo físico coincide con lo esperado para el turno."}</div>` +
         `</div>` +
         `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">` +
-        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Efectivo que deb�a quedar</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(expectedCash)}</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Efectivo que debía quedar</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(expectedCash)}</div></div>` +
         `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Efectivo contado al cierre</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(actualCash)}</div></div>` +
         `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Ventas en efectivo</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(summarySnapshot.cashRevenue)}</div></div>` +
         `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Cobros virtuales del turno</div><div style="margin-top:6px;font-size:20px;font-weight:700;">${formatMoney(summarySnapshot.nonCashRevenue)}</div></div>` +
         `</div>` +
-        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">C�mo se calcula la caja f�sica</div><div style="margin-top:6px;font-size:16px;font-weight:600;">Apertura + ventas en efectivo + ingresos manuales - egresos manuales</div><div style="margin-top:6px;color:#6b7280;">Los cobros virtuales no quedan en esta caja. Se registran aparte para control y conciliaci�n.</div></div>` +
-        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Actividad del turno</div><div style="margin-top:6px;font-size:16px;font-weight:600;">${summarySnapshot.salesCount} ventas registradas � ${summarySnapshot.unitsSold} unidades cobradas</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Cómo se calcula la caja física</div><div style="margin-top:6px;font-size:16px;font-weight:600;">Apertura + ventas en efectivo + ingresos manuales - egresos manuales</div><div style="margin-top:6px;color:#6b7280;">Los cobros virtuales no quedan en esta caja. Se registran aparte para control y conciliación.</div></div>` +
+        `<div style="padding:14px 16px;border-radius:18px;background:#f8f0e6;"><div style="font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#6b7280;">Actividad del turno</div><div style="margin-top:6px;font-size:16px;font-weight:600;">${summarySnapshot.salesCount} ventas registradas · ${summarySnapshot.unitsSold} unidades cobradas</div></div>` +
         notesMarkup +
         `</div>`,
     });
@@ -529,7 +735,7 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "No se pudo cerrar la caja.");
       setCashCloseForm(emptyCashCloseForm);
-      setMessage(`Caja cerrada. Diferencia f�sica final: ${formatMoney(data.difference_amount || 0)}.`);
+      setMessage(`Caja cerrada. Diferencia física final: ${formatMoney(data.difference_amount || 0)}.`);
       await refreshAll();
       await showCashCloseSummary(data, summarySnapshot);
     } catch (err) {
@@ -891,13 +1097,13 @@ function App() {
             </div>
           </section>
           <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <span className="eyebrow">Primer acceso</span>
-                <h2 className="auth-title mt-3 text-3xl font-semibold">Crear acceso local</h2>
-                <p className="auth-text mt-2 text-sm">Este ingreso solo protege la apertura del sistema en esta PC del local.</p>
+            <div>
+              <span className="eyebrow">Primer acceso</span>
+              <h2 className="auth-title mt-3 text-3xl font-semibold">Crear acceso local</h2>
+              <p className="auth-text mt-2 max-w-md text-sm">Este ingreso solo protege la apertura del sistema en esta PC del local.</p>
+              <div className="mt-5">
+                <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} orientation="vertical" compact />
               </div>
-              <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleAccessSetup}>
               <InputField label="Nombre del local" name="businessName" value={accessSetupForm.businessName} onChange={handleText(setAccessSetupForm)} placeholder="Ejemplo: Almacen San Martin" />
@@ -934,13 +1140,13 @@ function App() {
             </div>
           </section>
           <section className="auth-card rounded-[34px] p-8 shadow-panel lg:p-10">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <span className="eyebrow">Acceso local</span>
-                <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
-                <p className="auth-text mt-2 text-sm">Protección local para esta PC. No requiere Internet ni cuentas externas.</p>
+            <div>
+              <span className="eyebrow">Acceso local</span>
+              <h2 className="auth-title mt-3 text-3xl font-semibold">Ingresar al sistema</h2>
+              <p className="auth-text mt-2 max-w-md text-sm">Protección local para esta PC. No requiere Internet ni cuentas externas.</p>
+              <div className="mt-5">
+                <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} orientation="vertical" compact />
               </div>
-              <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} compact />
             </div>
             <form className="mt-8 space-y-4" onSubmit={handleLogin}>
               <InputField label="Usuario" name="userName" value={loginForm.userName} onChange={handleText(setLoginForm)} />
@@ -957,7 +1163,7 @@ function App() {
     <main className="app-shell min-h-screen">
       {themeShiftOverlay}
       <div className={`dashboard-layout grid min-h-screen ${sidebarCollapsed ? "lg:grid-cols-[104px_minmax(0,1fr)]" : "lg:grid-cols-[290px_minmax(0,1fr)]"}`}>
-        <aside className={`sidebar-shell border-r px-5 py-6 lg:px-6 ${sidebarCollapsed ? "sidebar-shell-collapsed" : ""}`}>
+        <aside id="tour-sidebar" className={`sidebar-shell border-r px-5 py-6 lg:px-6 ${sidebarCollapsed ? "sidebar-shell-collapsed" : ""}`}>
           <div className="flex items-start justify-between gap-3">
             <div className={sidebarCollapsed ? "sidebar-collapse-hidden" : ""}>
               <div className="brand-title text-3xl font-semibold">AppStock Local</div>
@@ -983,7 +1189,7 @@ function App() {
             </div>
           </div>
           <nav className="mt-8 space-y-2">
-            {navItems.map((item) => <SidebarLink key={item.id} item={item} active={activeSection === item.id} collapsed={sidebarCollapsed} onClick={() => setActiveSection(item.id)} />)}
+            {navItems.map((item) => <SidebarLink key={item.id} elementId={`tour-nav-${item.id}`} item={item} active={activeSection === item.id} collapsed={sidebarCollapsed} onClick={() => setActiveSection(item.id)} />)}
           </nav>
           <div className={`soft-card mt-8 rounded-[28px] p-5 ${sidebarCollapsed ? "sidebar-collapse-hidden" : ""}`}>
             <div className="panel-description text-xs uppercase tracking-[0.24em]">Resumen rápido</div>
@@ -1001,7 +1207,7 @@ function App() {
         </aside>
 
         <div className="main-shell px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-          <header className="topbar-shell flex flex-col gap-4 rounded-[30px] px-5 py-5 shadow-panel sm:flex-row sm:items-center sm:justify-between">
+          <header id="tour-topbar" className="topbar-shell flex flex-col gap-4 rounded-[30px] px-5 py-5 shadow-panel sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="panel-description text-xs uppercase tracking-[0.26em]">{sectionEyebrow(activeSection)}</div>
               <h1 className="panel-title mt-2 text-3xl font-semibold sm:text-4xl">{sectionTitle(activeSection, branchName)}</h1>
@@ -1009,6 +1215,8 @@ function App() {
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
               <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={startGuidedTour} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Ver recorrido</button>
+                <button type="button" onClick={toggleGuidedTour} className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${guidedTourEnabled ? "section-button section-button-active" : "section-button section-button-idle"}`}>{guidedTourEnabled ? "Guía activada" : "Guía desactivada"}</button>
                 <ThemeToggle theme={theme} themes={availableThemes} onChange={handleThemeChange} />
                 <div className="date-pill rounded-2xl px-4 py-3 text-right">
                   <div className="panel-description text-[11px] uppercase tracking-[0.24em]">Fecha actual</div>
@@ -1022,7 +1230,7 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={saleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} /> : null}
+            {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} handleScaleField={handleScaleField} handleScaleEnabledChange={handleScaleEnabledChange} saveScaleConfig={saveScaleConfig} testScaleRead={testScaleRead} refreshScalePorts={refreshScalePorts} serialPorts={serialPorts} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={saleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} scaleConfig={scaleConfig} scaleStatus={scaleStatus} scaleReadResult={scaleReadResult} scaleProviderOptions={scaleProviderOptions} scaleConnectionOptions={scaleConnectionOptions} scaleUnitOptions={scaleUnitOptions} /> : null}
             {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
             {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} cashMovementForm={cashMovementForm} setCashMovementForm={setCashMovementForm} submitCashMovement={submitCashMovement} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="Tesorería privada" description="Esta vista concentra recaudación, márgenes y análisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="Ingresá la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorería</button></form></Panel>) : null}
           </section>
@@ -1033,6 +1241,11 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
 
 
 

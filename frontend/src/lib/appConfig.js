@@ -7,6 +7,10 @@ export const emptyTreasuryFilter = { startDate: "", endDate: "" };
 export const emptyBusinessProfile = { businessName: "", businessAddress: "", businessWhatsapp: "", businessTaxId: "", businessLogoDataUrl: "" };
 export const emptyAccessSetup = { ...emptyBusinessProfile, userName: "", password: "", confirmPassword: "" };
 export const emptyLoginForm = { userName: "", password: "" };
+export const emptyScaleConfig = { enabled: false, provider: "mock", connection_type: "manual", port: "", baudrate: 9600, host: "", tcp_port: 0, unit: "kg", timeout_ms: 1200, stable_read_count: 2, simulated_weight: 1.25 };
+export const scaleProviderOptions = ["mock", "serial"];
+export const scaleConnectionOptions = ["manual", "serial", "hid", "tcp", "bluetooth"];
+export const scaleUnitOptions = ["kg", "g"];
 
 export const availableThemes = {
   dark: { label: "Oscuro", modeLabel: "Operación nocturna", summary: "Vista intensa para uso continuo y contraste alto." },
@@ -25,4 +29,6 @@ export const accessStorageKey = "appstock-local-access";
 export const sessionStorageKey = "appstock-session-open";
 export const activeSectionStorageKey = "appstock-active-section";
 export const sidebarCollapsedStorageKey = "appstock-sidebar-collapsed";
+export const guidedTourEnabledStorageKey = "appstock-guided-tour-enabled";
+export const guidedTourSeenStorageKey = "appstock-guided-tour-seen";
 export const paymentMethodOptions = ["Efectivo", "Débito", "Crédito", "Transferencia", "Mercado Pago", "Otro"];
