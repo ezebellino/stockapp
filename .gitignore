@@ -13,3 +13,10 @@ frontend/dist/
 # Local logs
 backend/logs/
 
+# Build artifacts
+backend/build/
+backend/dist/
+backend/build_pyinstaller/
+backend/dist_pyinstaller/
+release/
+

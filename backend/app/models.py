@@ -2,9 +2,10 @@ from pydantic import BaseModel, Field
 
 
 class StockItemBase(BaseModel):
-    code: str = Field(..., min_length=3, max_length=64)
+    code: str = Field(default="", max_length=64)
     name: str = Field(..., min_length=2, max_length=120)
     category: str = Field(default="General", max_length=80)
+    provider: str = Field(default="", max_length=120)
     quantity: int = Field(default=0, ge=0)
     min_quantity: int = Field(default=0, ge=0)
     sale_price: float = Field(default=0, ge=0)
@@ -31,17 +32,21 @@ class SaleCreate(BaseModel):
     code: str = Field(..., min_length=3, max_length=64)
     amount: int = Field(..., gt=0, le=9999)
     unit_price: float | None = Field(default=None, ge=0)
+    base_unit_price: float | None = Field(default=None, ge=0)
     payment_method: str = Field(default="Efectivo", min_length=3, max_length=40)
+    credit_bank_name: str | None = Field(default=None, max_length=120)
 
 
 class SaleLineCreate(BaseModel):
     code: str = Field(..., min_length=3, max_length=64)
     amount: int = Field(..., gt=0, le=9999)
     unit_price: float | None = Field(default=None, ge=0)
+    base_unit_price: float | None = Field(default=None, ge=0)
 
 
 class SaleCheckoutCreate(BaseModel):
     payment_method: str = Field(default="Efectivo", min_length=3, max_length=40)
+    credit_bank_name: str | None = Field(default=None, max_length=120)
     items: list[SaleLineCreate] = Field(..., min_length=1, max_length=100)
 
 
@@ -53,9 +58,12 @@ class SaleRecord(BaseModel):
     item_name: str
     category: str
     quantity: int
+    base_unit_price: float
     unit_price: float
     cost_price: float
     payment_method: str
+    bank_name: str | None = None
+    surcharge_percentage: float = 0
     total_amount: float
     revenue: float
     profit: float
@@ -65,6 +73,7 @@ class SaleRecord(BaseModel):
 class SaleCheckoutResult(BaseModel):
     order_number: str
     payment_method: str
+    bank_name: str | None = None
     created_at: str
     total_items: int
     total_units: int
@@ -92,6 +101,22 @@ class Category(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=80)
+
+
+class BankRate(BaseModel):
+    id: int
+    name: str
+    rate_percentage: float
+    created_at: str
+
+
+class BankRateCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    rate_percentage: float = Field(..., ge=0, le=1000)
+
+
+class BankRateUpdate(BankRateCreate):
+    pass
 
 
 class CashSessionOpen(BaseModel):

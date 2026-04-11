@@ -4,6 +4,9 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from ..logging_config import get_logger
 from ..models import (
+    BankRate,
+    BankRateCreate,
+    BankRateUpdate,
     Category,
     CategoryCreate,
     InventoryMovement,
@@ -35,6 +38,40 @@ def create_category(payload: CategoryCreate) -> Category:
     except ValueError as exc:
         logger.warning("No se pudo crear la categoria '%s': %s", payload.name, exc)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.get("/bank-rates", response_model=list[BankRate])
+def list_bank_rates() -> list[BankRate]:
+    return repository.list_bank_rates()
+
+
+@router.post("/bank-rates", response_model=BankRate, status_code=status.HTTP_201_CREATED)
+def create_bank_rate(payload: BankRateCreate) -> BankRate:
+    try:
+        return repository.create_bank_rate(payload)
+    except ValueError as exc:
+        logger.warning("No se pudo crear banco '%s': %s", payload.name, exc)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.put("/bank-rates/{bank_rate_id}", response_model=BankRate)
+def update_bank_rate(bank_rate_id: int, payload: BankRateUpdate) -> BankRate:
+    try:
+        bank_rate = repository.update_bank_rate(bank_rate_id, payload)
+    except ValueError as exc:
+        logger.warning("No se pudo actualizar banco '%s': %s", payload.name, exc)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if bank_rate is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Banco no encontrado.")
+    return bank_rate
+
+
+@router.delete("/bank-rates/{bank_rate_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_bank_rate(bank_rate_id: int) -> Response:
+    deleted = repository.delete_bank_rate(bank_rate_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Banco no encontrado.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/items", response_model=list[StockItem])
@@ -70,7 +107,8 @@ def list_movements(limit: int = Query(default=20, ge=1, le=100)) -> list[Invento
 
 @router.post("/items", response_model=StockItem, status_code=status.HTTP_201_CREATED)
 def create_item(payload: StockItemCreate) -> StockItem:
-    if repository.get_by_code(payload.code):
+    provided_code = payload.code.strip()
+    if provided_code and repository.get_by_code(provided_code):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe un producto con ese codigo.",
@@ -80,7 +118,8 @@ def create_item(payload: StockItemCreate) -> StockItem:
 
 @router.put("/items/{item_id}", response_model=StockItem)
 def update_item(item_id: int, payload: StockItemUpdate) -> StockItem:
-    existing = repository.get_by_code(payload.code)
+    provided_code = payload.code.strip()
+    existing = repository.get_by_code(provided_code) if provided_code else None
     if existing is not None and existing.id != item_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

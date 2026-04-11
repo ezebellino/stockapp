@@ -1,15 +1,18 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .device_service import device_service
 from .logging_config import get_logger
 from .repository import repository
 from .routers import devices, items, reports
+from .runtime_paths import resource_root
 
 logger = get_logger("api")
+FRONTEND_DIST = resource_root() / "frontend" / "dist"
+FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 
 
 @asynccontextmanager
@@ -23,8 +26,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="AppStock API",
-    version="0.2.0",
-    description="Backend local para control de stock y tesoreria.",
+    version="0.4.0",
+    description="Backend local para control de stock y tesorería.",
     lifespan=lifespan,
 )
 
@@ -58,3 +61,34 @@ app.include_router(devices.router, prefix="/api")
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/assets/{asset_path:path}", include_in_schema=False)
+def serve_frontend_assets(asset_path: str) -> FileResponse:
+    asset_file = FRONTEND_ASSETS / asset_path
+    if not asset_file.exists() or not asset_file.is_file():
+        raise HTTPException(status_code=404, detail="Recurso no encontrado.")
+    return FileResponse(asset_file)
+
+
+@app.get("/", include_in_schema=False)
+def serve_frontend_index() -> FileResponse:
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Frontend compilado no disponible.")
+    return FileResponse(index_file)
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend_spa(full_path: str) -> FileResponse:
+    if full_path.startswith("api/") or full_path == "health":
+        raise HTTPException(status_code=404, detail="Ruta no encontrada.")
+
+    requested_file = FRONTEND_DIST / full_path
+    if requested_file.exists() and requested_file.is_file():
+        return FileResponse(requested_file)
+
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail="Frontend compilado no disponible.")
+    return FileResponse(index_file)

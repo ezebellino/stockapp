@@ -1,10 +1,12 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
-LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+from .runtime_paths import app_root
+
+BASE_ROOT = app_root()
+LOG_DIR = (BASE_ROOT / "backend" / "logs") if (BASE_ROOT / "backend").exists() else (BASE_ROOT / "logs")
 LOG_FILE = LOG_DIR / "appstock.log"
 LOGGER_NAME = "appstock"
 

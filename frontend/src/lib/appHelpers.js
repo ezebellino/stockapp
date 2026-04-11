@@ -5,7 +5,7 @@ const integer = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 });
 
 export function createEmptyReports() { return { total_products: 0, total_units: 0, low_stock_count: 0, inventory_cost_value: 0, inventory_sale_value: 0, total_revenue: 0, total_profit: 0, total_sales_count: 0, total_units_sold: 0, top_products: [], top_categories: [], recent_sales: [], insights: [] }; }
 export function createEmptyCashSummary() { return { current_session: null, today_revenue: 0, cash_revenue: 0, non_cash_revenue: 0, manual_income: 0, manual_expense: 0, today_profit: 0, today_sales_count: 0, today_units_sold: 0, expected_cash_now: 0, recent_sessions: [], recent_cash_movements: [] }; }
-export function normalizeProductForm(form) { return { code: String(form.code).trim(), name: String(form.name).trim(), category: String(form.category).trim() || "General", quantity: Number(form.quantity), min_quantity: Number(form.min_quantity), sale_price: Number(form.sale_price), cost_price: Number(form.cost_price) }; }
+export function normalizeProductForm(form) { return { code: String(form.code).trim(), name: String(form.name).trim(), category: String(form.category).trim() || "General", provider: String(form.provider || "").trim(), quantity: Number(form.quantity), min_quantity: Number(form.min_quantity), sale_price: Number(form.sale_price), cost_price: Number(form.cost_price) }; }
 export function formatMoney(value) { return money.format(Number(value || 0)); }
 export function formatInteger(value) { return integer.format(Number(value || 0)); }
 export function formatDate(value) { return new Date(`${value}T00:00:00`).toLocaleDateString("es-AR"); }

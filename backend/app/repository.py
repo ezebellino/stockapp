@@ -1,12 +1,15 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import os
 import sqlite3
 import unicodedata
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from .logging_config import get_logger
 from .models import (
+    BankRate,
+    BankRateCreate,
+    BankRateUpdate,
     CashMovement,
     CashMovementCreate,
     CashSession,
@@ -28,14 +31,17 @@ from .models import (
     StockItemCreate,
     StockItemUpdate,
 )
+from .runtime_paths import app_root
 
 
 logger = get_logger('repository')
+LOAD_DEMO_DATA = os.environ.get("APPSTOCK_LOAD_DEMO", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 class SQLiteStockRepository:
     def __init__(self) -> None:
-        self._db_path = Path(__file__).resolve().parent.parent / "data" / "appstock.db"
+        base_root = app_root()
+        self._db_path = (base_root / "backend" / "data" / "appstock.db") if (base_root / "backend").exists() else (base_root / "data" / "appstock.db")
 
     def initialize(self) -> None:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,6 +54,7 @@ class SQLiteStockRepository:
                     code TEXT NOT NULL UNIQUE,
                     name TEXT NOT NULL,
                     category TEXT NOT NULL DEFAULT 'General',
+                    provider TEXT NOT NULL DEFAULT '',
                     quantity INTEGER NOT NULL DEFAULT 0,
                     min_quantity INTEGER NOT NULL DEFAULT 0,
                     sale_price REAL NOT NULL DEFAULT 0,
@@ -74,10 +81,23 @@ class SQLiteStockRepository:
                     item_name TEXT NOT NULL,
                     category TEXT NOT NULL,
                     quantity INTEGER NOT NULL,
+                    base_unit_price REAL NOT NULL DEFAULT 0,
                     unit_price REAL NOT NULL,
                     payment_method TEXT NOT NULL DEFAULT 'Efectivo',
+                    bank_name TEXT,
+                    surcharge_percentage REAL NOT NULL DEFAULT 0,
                     total_amount REAL NOT NULL DEFAULT 0,
                     cost_price REAL NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bank_rates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    rate_percentage REAL NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """
@@ -127,8 +147,9 @@ class SQLiteStockRepository:
 
         self._ensure_legacy_columns()
         self._normalize_existing_categories()
-        self._seed_if_empty()
-        self._seed_demo_activity_if_no_sales()
+        if LOAD_DEMO_DATA:
+            self._seed_if_empty()
+            self._seed_demo_activity_if_no_sales()
 
     def list_categories(self) -> list[Category]:
         with self._connect() as connection:
@@ -180,11 +201,89 @@ class SQLiteStockRepository:
                 connection.execute("INSERT INTO categories (name) VALUES (?)", (normalized_name,))
                 connection.commit()
 
+    def list_bank_rates(self) -> list[BankRate]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, rate_percentage, created_at
+                FROM bank_rates
+                ORDER BY LOWER(name)
+                """
+            ).fetchall()
+        return [self._to_bank_rate(row) for row in rows]
+
+    def get_bank_rate_by_name(self, name: str) -> BankRate | None:
+        normalized_name = self._canonicalize_label(name)
+        if not normalized_name:
+            return None
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT id, name, rate_percentage, created_at FROM bank_rates"
+            ).fetchall()
+        row = next(
+            (current for current in rows if self._normalize_text_key(current["name"]) == self._normalize_text_key(normalized_name)),
+            None,
+        )
+        return self._to_bank_rate(row) if row else None
+
+    def create_bank_rate(self, payload: BankRateCreate) -> BankRate:
+        bank_name = self._canonicalize_label(payload.name)
+        if not bank_name:
+            raise ValueError("El banco no puede estar vacio.")
+        existing = self.get_bank_rate_by_name(bank_name)
+        if existing is not None:
+            raise ValueError("El banco ya existe.")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO bank_rates (name, rate_percentage) VALUES (?, ?)",
+                (bank_name, payload.rate_percentage),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT id, name, rate_percentage, created_at FROM bank_rates WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+        return self._to_bank_rate(row)
+
+    def update_bank_rate(self, bank_rate_id: int, payload: BankRateUpdate) -> BankRate | None:
+        bank_name = self._canonicalize_label(payload.name)
+        if not bank_name:
+            raise ValueError("El banco no puede estar vacio.")
+        with self._connect() as connection:
+            rows = connection.execute("SELECT id, name FROM bank_rates").fetchall()
+            duplicated = next(
+                (
+                    row for row in rows
+                    if row["id"] != bank_rate_id and self._normalize_text_key(row["name"]) == self._normalize_text_key(bank_name)
+                ),
+                None,
+            )
+            if duplicated is not None:
+                raise ValueError("Ya existe otro banco con ese nombre.")
+            cursor = connection.execute(
+                "UPDATE bank_rates SET name = ?, rate_percentage = ? WHERE id = ?",
+                (bank_name, payload.rate_percentage, bank_rate_id),
+            )
+            connection.commit()
+            if cursor.rowcount == 0:
+                return None
+            row = connection.execute(
+                "SELECT id, name, rate_percentage, created_at FROM bank_rates WHERE id = ?",
+                (bank_rate_id,),
+            ).fetchone()
+        return self._to_bank_rate(row)
+
+    def delete_bank_rate(self, bank_rate_id: int) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute("DELETE FROM bank_rates WHERE id = ?", (bank_rate_id,))
+            connection.commit()
+        return cursor.rowcount > 0
+
     def list_items(self) -> list[StockItem]:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 ORDER BY LOWER(name)
                 """
@@ -195,7 +294,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 WHERE id = ?
                 """,
@@ -207,7 +306,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, code, name, category, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 WHERE code = ?
                 """,
@@ -303,18 +402,21 @@ class SQLiteStockRepository:
         return movement
 
     def create_item(self, payload: StockItemCreate) -> StockItem:
+        item_code = self._resolve_item_code(payload.code)
         category_name = self._canonicalize_label(payload.category)
+        provider_name = self._clean_label(payload.provider)
         self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO items (code, name, category, quantity, min_quantity, sale_price, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO items (code, name, category, provider, quantity, min_quantity, sale_price, cost_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    payload.code,
+                    item_code,
                     payload.name,
                     category_name,
+                    provider_name,
                     payload.quantity,
                     payload.min_quantity,
                     payload.sale_price,
@@ -326,7 +428,7 @@ class SQLiteStockRepository:
                 self._record_movement(
                     connection,
                     item_id=item_id,
-                    code=payload.code,
+                    code=item_code,
                     item_name=payload.name,
                     movement_type="CREATE",
                     quantity_delta=payload.quantity,
@@ -344,19 +446,22 @@ class SQLiteStockRepository:
         if current is None:
             return None
 
+        item_code = self._resolve_item_code(payload.code, fallback=current.code)
         category_name = self._canonicalize_label(payload.category)
+        provider_name = self._clean_label(payload.provider)
         self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE items
-                SET code = ?, name = ?, category = ?, quantity = ?, min_quantity = ?, sale_price = ?, cost_price = ?
+                SET code = ?, name = ?, category = ?, provider = ?, quantity = ?, min_quantity = ?, sale_price = ?, cost_price = ?
                 WHERE id = ?
                 """,
                 (
-                    payload.code,
+                    item_code,
                     payload.name,
                     category_name,
+                    provider_name,
                     payload.quantity,
                     payload.min_quantity,
                     payload.sale_price,
@@ -369,7 +474,7 @@ class SQLiteStockRepository:
                 self._record_movement(
                     connection,
                     item_id=item_id,
-                    code=payload.code,
+                    code=item_code,
                     item_name=payload.name,
                     movement_type="ADJUSTMENT",
                     quantity_delta=quantity_delta,
@@ -423,7 +528,15 @@ class SQLiteStockRepository:
         checkout = self.record_sale_checkout(
             SaleCheckoutCreate(
                 payment_method=payload.payment_method,
-                items=[SaleLineCreate(code=payload.code, amount=payload.amount, unit_price=payload.unit_price)],
+                credit_bank_name=payload.credit_bank_name,
+                items=[
+                    SaleLineCreate(
+                        code=payload.code,
+                        amount=payload.amount,
+                        unit_price=payload.unit_price,
+                        base_unit_price=payload.base_unit_price,
+                    )
+                ],
             )
         )
         item = self.get_by_code(payload.code)
@@ -433,11 +546,18 @@ class SQLiteStockRepository:
 
     def record_sale_checkout(self, payload: SaleCheckoutCreate) -> SaleCheckoutResult:
         if self.get_current_cash_session() is None:
-            raise ValueError("Abrí la caja del día antes de registrar ventas.")
+            raise ValueError("AbrÃ­ la caja del dÃ­a antes de registrar ventas.")
 
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         order_number = f"V-{datetime.now().strftime('%Y%m%d%H%M%S%f')[:-3]}"
         payment_method = self._canonicalize_payment_method(payload.payment_method)
+        credit_bank = None
+        if payment_method == "Credito":
+            if not payload.credit_bank_name:
+                raise ValueError("Selecciona un banco para ventas con credito.")
+            credit_bank = self.get_bank_rate_by_name(payload.credit_bank_name)
+            if credit_bank is None:
+                raise ValueError("El banco seleccionado no existe en la tabla de credito.")
 
         with self._connect() as connection:
             for line in payload.items:
@@ -463,7 +583,15 @@ class SQLiteStockRepository:
                     """,
                     (line.code,),
                 ).fetchone()
-                unit_price = line.unit_price if line.unit_price is not None else item_row["sale_price"]
+                base_unit_price = (
+                    line.base_unit_price
+                    if line.base_unit_price is not None
+                    else line.unit_price
+                    if line.unit_price is not None
+                    else item_row["sale_price"]
+                )
+                surcharge_percentage = credit_bank.rate_percentage if credit_bank is not None else 0
+                unit_price = round(base_unit_price * (1 + surcharge_percentage / 100), 2) if credit_bank is not None else base_unit_price
                 total_amount = line.amount * unit_price
                 connection.execute(
                     "UPDATE items SET quantity = ? WHERE id = ?",
@@ -471,8 +599,8 @@ class SQLiteStockRepository:
                 )
                 connection.execute(
                     """
-                    INSERT INTO sales (item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO sales (item_id, order_number, code, item_name, category, quantity, base_unit_price, unit_price, payment_method, bank_name, surcharge_percentage, total_amount, cost_price, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         item_row["id"],
@@ -481,8 +609,11 @@ class SQLiteStockRepository:
                         item_row["name"],
                         item_row["category"],
                         line.amount,
+                        base_unit_price,
                         unit_price,
                         payment_method,
+                        credit_bank.name if credit_bank is not None else None,
+                        surcharge_percentage,
                         total_amount,
                         item_row["cost_price"],
                         created_at,
@@ -501,7 +632,7 @@ class SQLiteStockRepository:
             connection.commit()
             sale_rows = connection.execute(
                 """
-                SELECT id, item_id, order_number, code, item_name, category, quantity, unit_price, payment_method, total_amount, cost_price, created_at
+                SELECT id, item_id, order_number, code, item_name, category, quantity, base_unit_price, unit_price, payment_method, bank_name, surcharge_percentage, total_amount, cost_price, created_at
                 FROM sales
                 WHERE order_number = ?
                 ORDER BY id ASC
@@ -514,16 +645,18 @@ class SQLiteStockRepository:
         total_amount = sum(sale.total_amount for sale in sales)
         total_profit = sum(sale.profit for sale in sales)
         logger.info(
-            "Venta checkout registrada | orden=%s | lineas=%s | unidades=%s | total=%s | medio=%s",
+            "Venta checkout registrada | orden=%s | lineas=%s | unidades=%s | total=%s | medio=%s | banco=%s",
             order_number,
             len(sales),
             total_units,
             total_amount,
             payment_method,
+            credit_bank.name if credit_bank is not None else "-",
         )
         return SaleCheckoutResult(
             order_number=order_number,
             payment_method=payment_method,
+            bank_name=credit_bank.name if credit_bank is not None else None,
             created_at=created_at,
             total_items=len(sales),
             total_units=total_units,
@@ -990,6 +1123,9 @@ class SQLiteStockRepository:
     def _ensure_legacy_columns(self) -> None:
         with self._connect() as connection:
             item_columns = {row["name"] for row in connection.execute("PRAGMA table_info(items)").fetchall()}
+            if "provider" not in item_columns:
+                connection.execute("ALTER TABLE items ADD COLUMN provider TEXT NOT NULL DEFAULT ''")
+                logger.info("Se agrego la columna provider a items.")
             if "sale_price" not in item_columns:
                 connection.execute("ALTER TABLE items ADD COLUMN sale_price REAL NOT NULL DEFAULT 0")
                 logger.info("Se agrego la columna sale_price a items.")
@@ -1005,9 +1141,18 @@ class SQLiteStockRepository:
                 )
 
             sales_columns = {row["name"] for row in connection.execute("PRAGMA table_info(sales)").fetchall()}
+            if "base_unit_price" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN base_unit_price REAL NOT NULL DEFAULT 0")
+                logger.info("Se agrego la columna base_unit_price a sales.")
             if "payment_method" not in sales_columns:
                 connection.execute("ALTER TABLE sales ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Efectivo'")
                 logger.info("Se agrego la columna payment_method a sales.")
+            if "bank_name" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN bank_name TEXT")
+                logger.info("Se agrego la columna bank_name a sales.")
+            if "surcharge_percentage" not in sales_columns:
+                connection.execute("ALTER TABLE sales ADD COLUMN surcharge_percentage REAL NOT NULL DEFAULT 0")
+                logger.info("Se agrego la columna surcharge_percentage a sales.")
             if "total_amount" not in sales_columns:
                 connection.execute("ALTER TABLE sales ADD COLUMN total_amount REAL NOT NULL DEFAULT 0")
                 logger.info("Se agrego la columna total_amount a sales.")
@@ -1029,12 +1174,19 @@ class SQLiteStockRepository:
                     )
                     """
                 )
-                logger.info("Se creó la tabla cash_movements para movimientos manuales de caja.")
+                logger.info("Se creÃ³ la tabla cash_movements para movimientos manuales de caja.")
             connection.execute(
                 """
                 UPDATE sales
                 SET payment_method = 'Efectivo'
                 WHERE TRIM(COALESCE(payment_method, '')) = ''
+                """
+            )
+            connection.execute(
+                """
+                UPDATE sales
+                SET base_unit_price = unit_price
+                WHERE base_unit_price = 0
                 """
             )
             connection.execute(
@@ -1058,6 +1210,16 @@ class SQLiteStockRepository:
                 exists = next((row for row in rows if self._normalize_text_key(row["name"]) == self._normalize_text_key(canonical_name)), None)
                 if exists is None:
                     connection.execute("INSERT INTO categories (name) VALUES (?)", (canonical_name,))
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bank_rates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    rate_percentage REAL NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             connection.commit()
 
     def _normalize_existing_categories(self) -> None:
@@ -1255,11 +1417,41 @@ class SQLiteStockRepository:
         cleaned = cls._clean_label(value)
         return " ".join(word[:1].upper() + word[1:].lower() for word in cleaned.split())
 
+    def _resolve_item_code(self, code: str | None, *, fallback: str | None = None) -> str:
+        cleaned = self._clean_label(code or "")
+        if cleaned:
+            return cleaned
+        if fallback:
+            return fallback
+        return self._generate_internal_code()
+
+    def _generate_internal_code(self) -> str:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id
+                FROM items
+                WHERE code LIKE 'INT-%'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        next_id = (row["id"] + 1) if row else 1
+        return f"INT-{next_id:06d}"
+
     @staticmethod
     def _canonicalize_payment_method(value: str) -> str:
-        allowed = {"Efectivo", "Débito", "Crédito", "Transferencia", "Mercado Pago", "Otro"}
         cleaned = " ".join(str(value or "Efectivo").strip().split())
-        return cleaned if cleaned in allowed else "Otro"
+        normalized = SQLiteStockRepository._normalize_text_key(cleaned)
+        mapping = {
+            "efectivo": "Efectivo",
+            "debito": "Debito",
+            "credito": "Credito",
+            "transferencia": "Transferencia",
+            "mercado pago": "Mercado Pago",
+            "otro": "Otro",
+        }
+        return mapping.get(normalized, "Otro")
 
     @staticmethod
     def _build_sales_period_filter(*, start_date: str | None = None, end_date: str | None = None) -> tuple[str, tuple[str, ...]]:
@@ -1314,10 +1506,20 @@ class SQLiteStockRepository:
             code=row["code"],
             name=row["name"],
             category=row["category"],
+            provider=row["provider"] if "provider" in row.keys() else "",
             quantity=row["quantity"],
             min_quantity=row["min_quantity"],
             sale_price=row["sale_price"],
             cost_price=row["cost_price"],
+        )
+
+    @staticmethod
+    def _to_bank_rate(row: sqlite3.Row) -> BankRate:
+        return BankRate(
+            id=row["id"],
+            name=row["name"],
+            rate_percentage=row["rate_percentage"],
+            created_at=row["created_at"],
         )
 
     @staticmethod
@@ -1332,9 +1534,12 @@ class SQLiteStockRepository:
             item_name=row["item_name"],
             category=row["category"],
             quantity=row["quantity"],
+            base_unit_price=row["base_unit_price"] if "base_unit_price" in row.keys() else row["unit_price"],
             unit_price=row["unit_price"],
             cost_price=row["cost_price"],
             payment_method=row["payment_method"] if "payment_method" in row.keys() else "Efectivo",
+            bank_name=row["bank_name"] if "bank_name" in row.keys() else None,
+            surcharge_percentage=row["surcharge_percentage"] if "surcharge_percentage" in row.keys() else 0,
             total_amount=total_amount,
             revenue=total_amount,
             profit=profit,
@@ -1404,6 +1609,7 @@ class SQLiteStockRepository:
 
 
 repository = SQLiteStockRepository()
+
 
 
 

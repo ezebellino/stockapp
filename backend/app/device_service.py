@@ -3,21 +3,21 @@ from __future__ import annotations
 import json
 from abc import ABC, abstractmethod
 from datetime import datetime
-from pathlib import Path
 
 from .logging_config import get_logger
 from .models import ScaleConfig, ScaleReadResult, ScaleStatus, SerialPortInfo
+from .runtime_paths import app_root
 
 logger = get_logger("devices")
 
 try:
     import serial  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency at runtime
+except ImportError:  # pragma: no cover
     serial = None
 
 try:
     from serial.tools import list_ports  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency at runtime
+except ImportError:  # pragma: no cover
     list_ports = None
 
 
@@ -40,7 +40,7 @@ class MockScaleProvider(ScaleProvider):
 
     def is_ready(self, config: ScaleConfig) -> tuple[bool, str]:
         if not config.enabled:
-            return False, "La balanza esta desactivada."
+            return False, "La balanza está desactivada."
         return True, "Proveedor de prueba listo para simular lecturas."
 
     def read_weight(self, config: ScaleConfig, *, simulated_weight: float | None = None) -> ScaleReadResult:
@@ -62,16 +62,16 @@ class SerialScaleProvider(ScaleProvider):
 
     def is_ready(self, config: ScaleConfig) -> tuple[bool, str]:
         if not config.enabled:
-            return False, "La balanza esta desactivada."
+            return False, "La balanza está desactivada."
         if serial is None:
-            return False, "pyserial no esta instalado en el entorno local."
+            return False, "pyserial no está instalado en el entorno local."
         if not config.port:
             return False, "Falta configurar el puerto COM."
         return True, f"Proveedor serial listo para leer desde {config.port}."
 
     def read_weight(self, config: ScaleConfig, *, simulated_weight: float | None = None) -> ScaleReadResult:
         if serial is None:
-            raise ValueError("pyserial no esta instalado. Ejecuta la sincronizacion de dependencias del backend.")
+            raise ValueError("pyserial no está instalado. Ejecutá la sincronización de dependencias del backend.")
         if not config.port:
             raise ValueError("No hay puerto configurado para la balanza serial.")
 
@@ -133,7 +133,8 @@ class SerialScaleProvider(ScaleProvider):
 
 class DeviceService:
     def __init__(self) -> None:
-        self._config_path = Path(__file__).resolve().parent.parent / "data" / "device_settings.json"
+        base_root = app_root()
+        self._config_path = (base_root / "backend" / "data" / "device_settings.json") if (base_root / "backend").exists() else (base_root / "data" / "device_settings.json")
         self._providers: dict[str, ScaleProvider] = {
             "mock": MockScaleProvider(),
             "serial": SerialScaleProvider(),
@@ -154,7 +155,7 @@ class DeviceService:
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"scale": config.model_dump()}
         self._config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        logger.info("Configuracion de balanza actualizada: provider=%s, connection_type=%s", config.provider, config.connection_type)
+        logger.info("Configuración de balanza actualizada: provider=%s, connection_type=%s", config.provider, config.connection_type)
         return config
 
     def get_scale_status(self) -> ScaleStatus:
@@ -189,7 +190,7 @@ class DeviceService:
         config = self.get_scale_config()
         provider = self._providers.get(config.provider)
         if provider is None:
-            raise ValueError("El proveedor configurado no esta disponible.")
+            raise ValueError("El proveedor configurado no está disponible.")
         ready, detail = provider.is_ready(config)
         if not ready:
             raise ValueError(detail)
@@ -200,11 +201,7 @@ class DeviceService:
             return []
         ports = list_ports.comports()
         return [
-            SerialPortInfo(
-                device=port.device,
-                description=port.description or port.device,
-                hwid=port.hwid or "",
-            )
+            SerialPortInfo(device=port.device, description=port.description or port.device, hwid=port.hwid or "")
             for port in ports
         ]
 
