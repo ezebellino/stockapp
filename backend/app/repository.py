@@ -10,6 +10,7 @@ from .models import (
     BankRate,
     BankRateCreate,
     BankRateUpdate,
+    BulkProviderAssign,
     CashMovement,
     CashMovementCreate,
     CashSession,
@@ -491,6 +492,20 @@ class SQLiteStockRepository:
             cursor = connection.execute("DELETE FROM items WHERE id = ?", (item_id,))
             connection.commit()
         return cursor.rowcount > 0
+
+    def assign_provider_to_items(self, payload: BulkProviderAssign) -> int:
+        provider_name = self._clean_label(payload.provider)
+        item_ids = sorted({int(item_id) for item_id in payload.item_ids if int(item_id) > 0})
+        if not item_ids:
+            raise ValueError("Seleccioná al menos un producto.")
+        placeholders = ",".join("?" for _ in item_ids)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"UPDATE items SET provider = ? WHERE id IN ({placeholders})",
+                (provider_name, *item_ids),
+            )
+            connection.commit()
+        return cursor.rowcount
 
     def increase_stock(self, code: str, amount: int) -> StockItem | None:
         with self._connect() as connection:

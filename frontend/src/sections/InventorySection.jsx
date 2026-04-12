@@ -39,6 +39,12 @@ export default function InventorySection(props) {
     lowStockItems,
     setActiveSection,
     formatMoney,
+    selectedInventoryIds,
+    bulkProviderName,
+    setBulkProviderName,
+    assignProviderToSelection,
+    toggleInventorySelection,
+    toggleAllVisibleInventorySelection,
   } = props;
 
   const needsSetup = categories.length === 0 || filteredItems.length === 0;
@@ -113,8 +119,13 @@ export default function InventorySection(props) {
         </Panel>
       </section>
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Panel title="Catálogo de productos" description="Visualizá inventario, editá datos, filtrá por categoría, proveedor y eliminá productos obsoletos." action={<div className="flex flex-wrap gap-2"><SummaryBadge label="Productos visibles" value={filteredItems.length} /><SummaryBadge label="Cobertura sana" value={`${stockCoverage}%`} /></div>}>
-          {loading ? <EmptyState>Cargando inventario...</EmptyState> : filteredItems.length === 0 ? <EmptyState>No hay productos para ese filtro. Probá otra categoría, proveedor o limpiá la búsqueda.</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} formatMoney={formatMoney} />}
+        <Panel title="Catálogo de productos" description="Visualizá inventario, editá datos, filtrá por categoría, proveedor y eliminá productos obsoletos." action={<div className="flex flex-wrap gap-2"><SummaryBadge label="Productos visibles" value={filteredItems.length} /><SummaryBadge label="Seleccionados" value={selectedInventoryIds.length} /><SummaryBadge label="Cobertura sana" value={`${stockCoverage}%`} /></div>}>
+          <form className="soft-card mb-4 grid gap-3 rounded-2xl p-4 md:grid-cols-[1fr_auto_auto]" onSubmit={assignProviderToSelection}>
+            <input value={bulkProviderName} onChange={(event) => setBulkProviderName(event.target.value)} placeholder="Asignar proveedor a los seleccionados" className="field-input rounded-2xl px-4 py-3 text-sm outline-none transition" />
+            <button type="submit" disabled={saving || selectedInventoryIds.length === 0} className="section-button section-button-active rounded-2xl px-4 py-3 text-sm font-semibold transition">Asignar proveedor</button>
+            <button type="button" onClick={() => setBulkProviderName("")} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Vaciar campo</button>
+          </form>
+          {loading ? <EmptyState>Cargando inventario...</EmptyState> : filteredItems.length === 0 ? <EmptyState>No hay productos para ese filtro. Probá otra categoría, proveedor o limpiá la búsqueda.</EmptyState> : <InventoryTable items={filteredItems} onEdit={startEditing} onDelete={handleDelete} formatMoney={formatMoney} selectedIds={selectedInventoryIds} onToggleSelect={toggleInventorySelection} onToggleSelectAll={toggleAllVisibleInventorySelection} />}
         </Panel>
         <div className="space-y-6">
           <Panel title="Estado de stock" description="Una vista rápida para priorizar la reposición."><div className="grid gap-4 sm:grid-cols-2"><MetricCard label="Categorías" value={categories.length} /><MetricCard label="Stock bajo" value={lowStockItems.length} emphasis={lowStockItems.length > 0} /></div><div className="inventory-health mt-5 rounded-[24px] p-4"><div className="flex items-center justify-between gap-3"><div><div className="panel-description text-xs uppercase tracking-[0.22em]">Salud del inventario</div><div className="content-strong mt-1 text-lg font-semibold">{stockCoverage}% de productos visibles por encima del mínimo</div></div><div className="health-pill rounded-full px-3 py-2 text-xs font-semibold">{lowStockItems.length === 0 ? "Sin alertas" : `${lowStockItems.length} con alerta`}</div></div><div className="progress-track mt-4 h-3 overflow-hidden rounded-full"><div className="progress-bar h-full rounded-full" style={{ width: `${stockCoverage}%` }} /></div></div></Panel>

@@ -46,6 +46,8 @@ function App() {
   const [salesSearchTerm, setSalesSearchTerm] = useState("");
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState("Todas las categorías");
   const [inventoryProviderFilter, setInventoryProviderFilter] = useState("Todos los proveedores");
+  const [selectedInventoryIds, setSelectedInventoryIds] = useState([]);
+  const [bulkProviderName, setBulkProviderName] = useState("");
   const [treasuryAccessPassword, setTreasuryAccessPassword] = useState("");
   const [treasuryUnlocked, setTreasuryUnlocked] = useState(false);
   const [accessConfig, setAccessConfig] = useState(null);
@@ -980,6 +982,49 @@ function App() {
     setMessage(`Editando ${item.name}.`);
   }
 
+  function toggleInventorySelection(itemId) {
+    setSelectedInventoryIds((current) => current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId]);
+  }
+
+  function toggleAllVisibleInventorySelection(checked) {
+    const visibleIds = filteredItems.map((item) => item.id);
+    setSelectedInventoryIds((current) => {
+      const visibleSet = new Set(visibleIds);
+      const remaining = current.filter((id) => !visibleSet.has(id));
+      return checked ? [...remaining, ...visibleIds] : remaining;
+    });
+  }
+
+  async function assignProviderToSelection(event) {
+    event.preventDefault();
+    const provider = bulkProviderName.trim();
+    if (selectedInventoryIds.length === 0) {
+      setError("Seleccioná al menos un producto para asignar proveedor.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/items/assign-provider`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_ids: selectedInventoryIds, provider }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "No se pudo asignar el proveedor.");
+      }
+      setMessage(provider ? `Proveedor asignado a ${selectedInventoryIds.length} productos: ${provider}.` : `Proveedor quitado de ${selectedInventoryIds.length} productos.`);
+      setSelectedInventoryIds([]);
+      setBulkProviderName("");
+      await refreshAll();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function resetProductEditor() {
     setEditingId(null);
     setScanCandidate(null);
@@ -1405,7 +1450,7 @@ function App() {
 
           <section className="mt-6">
             {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} handleSaleFieldChange={handleSaleFieldChange} handleScaleField={handleScaleField} handleScaleEnabledChange={handleScaleEnabledChange} saveScaleConfig={saveScaleConfig} testScaleRead={testScaleRead} refreshScalePorts={refreshScalePorts} serialPorts={serialPorts} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} bankRates={bankRates} selectedCreditBank={selectedCreditBank} suggestedBaseSalePrice={suggestedBaseSalePrice} suggestedFinalSalePrice={suggestedFinalSalePrice} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={displaySaleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} scaleConfig={scaleConfig} scaleStatus={scaleStatus} scaleReadResult={scaleReadResult} scaleProviderOptions={scaleProviderOptions} scaleConnectionOptions={scaleConnectionOptions} scaleUnitOptions={scaleUnitOptions} /> : null}
-            {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} inventoryProviderFilter={inventoryProviderFilter} setInventoryProviderFilter={setInventoryProviderFilter} providerOptions={providerOptions} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} handleProductFieldChange={handleProductFieldChange} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} /> : null}
+            {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} inventoryProviderFilter={inventoryProviderFilter} setInventoryProviderFilter={setInventoryProviderFilter} providerOptions={providerOptions} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} handleProductFieldChange={handleProductFieldChange} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} selectedInventoryIds={selectedInventoryIds} bulkProviderName={bulkProviderName} setBulkProviderName={setBulkProviderName} assignProviderToSelection={assignProviderToSelection} toggleInventorySelection={toggleInventorySelection} toggleAllVisibleInventorySelection={toggleAllVisibleInventorySelection} /> : null}
             {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} cashMovementForm={cashMovementForm} setCashMovementForm={setCashMovementForm} bankRateForm={bankRateForm} setBankRateForm={setBankRateForm} editingBankRateId={editingBankRateId} bankRates={bankRates} submitBankRate={submitBankRate} startEditingBankRate={startEditingBankRate} deleteBankRate={deleteBankRate} resetBankRateEditor={resetBankRateEditor} submitCashMovement={submitCashMovement} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="Tesorería privada" description="Esta vista concentra recaudación, márgenes y análisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="Ingresá la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorería</button></form></Panel>) : null}
           </section>
         </div>

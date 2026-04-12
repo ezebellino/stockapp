@@ -7,6 +7,7 @@ from ..models import (
     BankRate,
     BankRateCreate,
     BankRateUpdate,
+    BulkProviderAssign,
     Category,
     CategoryCreate,
     InventoryMovement,
@@ -145,6 +146,17 @@ def delete_item(item_id: int) -> Response:
     deleted = repository.delete_item(item_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/items/assign-provider", status_code=status.HTTP_204_NO_CONTENT)
+def assign_provider(payload: BulkProviderAssign) -> Response:
+    try:
+        updated = repository.assign_provider_to_items(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if updated == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontraron productos para actualizar.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

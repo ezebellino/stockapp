@@ -26,8 +26,10 @@ scripts/
   reset_local_data.ps1
   start_local.ps1
   update_local.ps1
+  update_portable_release.ps1
 AppStock Local.bat
 Actualizar AppStock.bat
+Actualizador Base Local.bat
 Reiniciar AppStock.bat
 ```
 
@@ -128,6 +130,36 @@ Esa carpeta está pensada para copiar completa al pendrive o al disco de la PC d
 release\AppStockLocal\AppStockLocal.exe
 ```
 
+## Actualización portable sin perder datos
+
+La base local no necesita borrarse para sumar campos nuevos. El backend aplica migraciones incrementales al arrancar, por ejemplo agregando columnas nuevas con `ALTER TABLE` cuando hacen falta.
+
+Eso permite:
+
+- conservar productos, ventas, caja y configuraciones ya cargadas
+- actualizar el programa sin perder datos
+- dejar que la base se adapte sola al abrir la versión nueva
+
+### Actualizar desde pendrive en la PC del negocio
+
+1. Cerrá `AppStockLocal.exe`
+2. Copiá al pendrive la carpeta nueva `release\AppStockLocal`
+3. En la instalación actual del cliente, ejecutá:
+
+```text
+Actualizador Base Local.bat
+```
+
+4. Indicá como origen la carpeta `AppStockLocal` del pendrive
+
+Ese actualizador:
+
+- reemplaza los archivos del programa
+- preserva `data\`
+- preserva `logs\`
+
+No sobrescribas manualmente la carpeta `data` del cliente.
+
 ## Reinicio limpio para prueba de negocio
 
 Para arrancar desde cero:
@@ -138,7 +170,7 @@ Reiniciar AppStock.bat
 
 Eso elimina la base local para que la próxima apertura muestre `Primer acceso`.
 
-## Actualizaciones
+## Actualizaciones para entorno de desarrollo
 
 ### Desde internet / repositorio
 

@@ -24,6 +24,11 @@ class StockItemUpdate(StockItemBase):
     pass
 
 
+class BulkProviderAssign(BaseModel):
+    item_ids: list[int] = Field(..., min_length=1, max_length=1000)
+    provider: str = Field(default="", max_length=120)
+
+
 class StockAdjustment(BaseModel):
     amount: int = Field(..., gt=0, le=9999)
 
