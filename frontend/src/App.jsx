@@ -173,7 +173,13 @@ function App() {
     const categoryTerm = normalizeText(inventoryCategoryFilter);
     const providerTerm = normalizeText(inventoryProviderFilter);
     return items.filter((item) => {
-      const matchesTerm = !term || normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term) || normalizeText(item.provider).includes(term);
+      const matchesTerm = !term
+        || normalizeText(item.name).includes(term)
+        || normalizeText(item.code).includes(term)
+        || normalizeText(item.category).includes(term)
+        || normalizeText(item.subcategory).includes(term)
+        || normalizeText(item.variant).includes(term)
+        || normalizeText(item.provider).includes(term);
       const matchesCategory = !categoryTerm || categoryTerm === normalizeText("Todas las categorías") || normalizeText(item.category) === categoryTerm;
       const matchesProvider = !providerTerm || providerTerm === normalizeText("Todos los proveedores") || normalizeText(item.provider) === providerTerm;
       return matchesTerm && matchesCategory && matchesProvider;
@@ -182,7 +188,7 @@ function App() {
   const saleMatches = useMemo(() => {
     const term = normalizeText(salesSearchTerm);
     if (!term) return items.slice(0, 8);
-    return items.filter((item) => normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term) || normalizeText(item.provider).includes(term)).slice(0, 8);
+    return items.filter((item) => normalizeText(item.name).includes(term) || normalizeText(item.code).includes(term) || normalizeText(item.category).includes(term) || normalizeText(item.subcategory).includes(term) || normalizeText(item.variant).includes(term) || normalizeText(item.provider).includes(term)).slice(0, 8);
   }, [items, salesSearchTerm]);
   const providerOptions = useMemo(() => {
     const providers = Array.from(new Set(items.map((item) => String(item.provider || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -906,7 +912,7 @@ function App() {
       const response = await fetch(`${API_URL}/items/${normalizedCode}/scan`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: Number(scanAmount) }) });
       if (response.status === 404) {
         const fallbackCategory = categories[0]?.name ?? "General";
-        const nextProduct = { ...emptyProductForm, code: normalizedCode, quantity: Number(scanAmount), category: fallbackCategory, provider: "" };
+        const nextProduct = { ...emptyProductForm, code: normalizedCode, quantity: Number(scanAmount), category: fallbackCategory, subcategory: "", variant: "", provider: "" };
         setScanCandidate(nextProduct);
         setProductForm(nextProduct);
         setEditingId(null);
@@ -970,6 +976,8 @@ function App() {
       code: item.code,
       name: item.name,
       category: item.category,
+      subcategory: item.subcategory || "",
+      variant: item.variant || "",
       provider: item.provider || "",
       quantity: item.quantity,
       min_quantity: item.min_quantity,

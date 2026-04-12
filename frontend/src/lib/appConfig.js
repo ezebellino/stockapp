@@ -4,6 +4,8 @@ export const emptyProductForm = {
   code: "",
   name: "",
   category: "General",
+  subcategory: "",
+  variant: "",
   provider: "",
   quantity: 0,
   min_quantity: 0,

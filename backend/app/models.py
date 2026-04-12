@@ -5,6 +5,8 @@ class StockItemBase(BaseModel):
     code: str = Field(default="", max_length=64)
     name: str = Field(..., min_length=2, max_length=120)
     category: str = Field(default="General", max_length=80)
+    subcategory: str = Field(default="", max_length=120)
+    variant: str = Field(default="", max_length=120)
     provider: str = Field(default="", max_length=120)
     quantity: int = Field(default=0, ge=0)
     min_quantity: int = Field(default=0, ge=0)

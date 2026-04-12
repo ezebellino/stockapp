@@ -55,6 +55,8 @@ class SQLiteStockRepository:
                     code TEXT NOT NULL UNIQUE,
                     name TEXT NOT NULL,
                     category TEXT NOT NULL DEFAULT 'General',
+                    subcategory TEXT NOT NULL DEFAULT '',
+                    variant TEXT NOT NULL DEFAULT '',
                     provider TEXT NOT NULL DEFAULT '',
                     quantity INTEGER NOT NULL DEFAULT 0,
                     min_quantity INTEGER NOT NULL DEFAULT 0,
@@ -284,7 +286,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, subcategory, variant, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 ORDER BY LOWER(name)
                 """
@@ -295,7 +297,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, subcategory, variant, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 WHERE id = ?
                 """,
@@ -307,7 +309,7 @@ class SQLiteStockRepository:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, code, name, category, provider, quantity, min_quantity, sale_price, cost_price
+                SELECT id, code, name, category, subcategory, variant, provider, quantity, min_quantity, sale_price, cost_price
                 FROM items
                 WHERE code = ?
                 """,
@@ -405,18 +407,22 @@ class SQLiteStockRepository:
     def create_item(self, payload: StockItemCreate) -> StockItem:
         item_code = self._resolve_item_code(payload.code)
         category_name = self._canonicalize_label(payload.category)
+        subcategory_name = self._canonicalize_label(payload.subcategory)
+        variant_name = self._canonicalize_label(payload.variant)
         provider_name = self._clean_label(payload.provider)
         self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                INSERT INTO items (code, name, category, provider, quantity, min_quantity, sale_price, cost_price)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO items (code, name, category, subcategory, variant, provider, quantity, min_quantity, sale_price, cost_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_code,
                     payload.name,
                     category_name,
+                    subcategory_name,
+                    variant_name,
                     provider_name,
                     payload.quantity,
                     payload.min_quantity,
@@ -449,19 +455,23 @@ class SQLiteStockRepository:
 
         item_code = self._resolve_item_code(payload.code, fallback=current.code)
         category_name = self._canonicalize_label(payload.category)
+        subcategory_name = self._canonicalize_label(payload.subcategory)
+        variant_name = self._canonicalize_label(payload.variant)
         provider_name = self._clean_label(payload.provider)
         self.ensure_category(category_name)
         with self._connect() as connection:
             cursor = connection.execute(
                 """
                 UPDATE items
-                SET code = ?, name = ?, category = ?, provider = ?, quantity = ?, min_quantity = ?, sale_price = ?, cost_price = ?
+                SET code = ?, name = ?, category = ?, subcategory = ?, variant = ?, provider = ?, quantity = ?, min_quantity = ?, sale_price = ?, cost_price = ?
                 WHERE id = ?
                 """,
                 (
                     item_code,
                     payload.name,
                     category_name,
+                    subcategory_name,
+                    variant_name,
                     provider_name,
                     payload.quantity,
                     payload.min_quantity,
@@ -1138,6 +1148,12 @@ class SQLiteStockRepository:
     def _ensure_legacy_columns(self) -> None:
         with self._connect() as connection:
             item_columns = {row["name"] for row in connection.execute("PRAGMA table_info(items)").fetchall()}
+            if "subcategory" not in item_columns:
+                connection.execute("ALTER TABLE items ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''")
+                logger.info("Se agrego la columna subcategory a items.")
+            if "variant" not in item_columns:
+                connection.execute("ALTER TABLE items ADD COLUMN variant TEXT NOT NULL DEFAULT ''")
+                logger.info("Se agrego la columna variant a items.")
             if "provider" not in item_columns:
                 connection.execute("ALTER TABLE items ADD COLUMN provider TEXT NOT NULL DEFAULT ''")
                 logger.info("Se agrego la columna provider a items.")
@@ -1521,6 +1537,8 @@ class SQLiteStockRepository:
             code=row["code"],
             name=row["name"],
             category=row["category"],
+            subcategory=row["subcategory"] if "subcategory" in row.keys() else "",
+            variant=row["variant"] if "variant" in row.keys() else "",
             provider=row["provider"] if "provider" in row.keys() else "",
             quantity=row["quantity"],
             min_quantity=row["min_quantity"],
