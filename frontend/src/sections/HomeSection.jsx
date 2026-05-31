@@ -52,6 +52,11 @@ export default function HomeSection(props) {
     scaleProviderOptions,
     scaleConnectionOptions,
     scaleUnitOptions,
+    ticketPrinterConfig,
+    ticketPrinterProfiles,
+    handleTicketPrinterField,
+    applyGadnicTicketPrinterPreset,
+    saveTicketPrinterConfig,
     serialPorts,
     refreshScalePorts,
   } = props;
@@ -337,6 +342,22 @@ export default function HomeSection(props) {
             <button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold md:col-span-2">Guardar configuracion de balanza</button>
           </form>
         </div>
+
+        <form className="mt-6 grid gap-4 md:grid-cols-2" onSubmit={saveTicketPrinterConfig}>
+          <div className="soft-card rounded-2xl p-4 md:col-span-2">
+            <div className="content-strong text-lg font-semibold">Impresora de tickets</div>
+            <div className="panel-description mt-1 text-sm">Perfil activo: {ticketPrinterConfig.label}. Papel {ticketPrinterConfig.paperWidthMm} mm, margen lateral {ticketPrinterConfig.horizontalPaddingMm} mm.</div>
+          </div>
+          <SelectField label="Preconfiguracion" name="profileId" value={ticketPrinterConfig.profileId} onChange={handleTicketPrinterField} options={[...ticketPrinterProfiles.map((profile) => profile.id), "custom"]} />
+          <InputField label="Ancho de papel (mm)" name="paperWidthMm" type="number" min="48" max="90" value={ticketPrinterConfig.paperWidthMm} onChange={handleTicketPrinterField} />
+          <InputField label="Margen lateral (mm)" name="horizontalPaddingMm" type="number" min="0" max="12" value={ticketPrinterConfig.horizontalPaddingMm} onChange={handleTicketPrinterField} />
+          <InputField label="Margen vertical (mm)" name="verticalPaddingMm" type="number" min="0" max="16" value={ticketPrinterConfig.verticalPaddingMm} onChange={handleTicketPrinterField} />
+          <InputField label="Tamaño de texto (px)" name="fontSizePx" type="number" min="8" max="14" value={ticketPrinterConfig.fontSizePx} onChange={handleTicketPrinterField} />
+          <div className="flex flex-col gap-3 sm:flex-row md:col-span-2">
+            <button type="button" onClick={applyGadnicTicketPrinterPreset} className="section-button section-button-idle rounded-2xl px-4 py-3 text-sm font-semibold transition">Usar GADNIC IT1050</button>
+            <button type="submit" disabled={saving} className="primary-button rounded-2xl px-4 py-3 text-sm font-semibold">Guardar impresora de ticket</button>
+          </div>
+        </form>
       </Panel>
     </div>
   );

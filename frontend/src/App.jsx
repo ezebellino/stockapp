@@ -6,8 +6,9 @@ import { FeatureCard, InputField, LogoUploadField, MiniLine, MiniStat, Panel, Si
 import HomeSection from "./sections/HomeSection";
 import InventorySection from "./sections/InventorySection";
 import TreasurySection from "./sections/TreasurySection";
-import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBankRateForm, emptyBusinessProfile, emptyCashCloseForm, emptyCashMovementForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyScaleConfig, emptyTreasuryFilter, guidedTourEnabledStorageKey, guidedTourSeenStorageKey, navItems, paymentMethodOptions, scaleConnectionOptions, scaleProviderOptions, scaleUnitOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey } from "./lib/appConfig";
+import { accessStorageKey, activeSectionStorageKey, availableThemes, emptyAccessSetup, emptyBankRateForm, emptyBusinessProfile, emptyCashCloseForm, emptyCashMovementForm, emptyCashOpenForm, emptyLoginForm, emptyProductForm, emptySaleForm, emptyScaleConfig, emptyTreasuryFilter, guidedTourEnabledStorageKey, guidedTourSeenStorageKey, navItems, paymentMethodOptions, scaleConnectionOptions, scaleProviderOptions, scaleUnitOptions, scanLockMs, sessionStorageKey, sidebarCollapsedStorageKey, ticketPrinterStorageKey } from "./lib/appConfig";
 import { buildBusinessProfileForm, buildDateQuery, buildInitials, buildTreasuryPresetFilter, createEmptyCashSummary, createEmptyReports, escapeHtml, formatDate, formatDateTime, formatInteger, formatMoney, handleText, normalizeProductForm, normalizeText, readLocalJson, sectionDescription, sectionEyebrow, sectionTitle } from "./lib/appHelpers";
+import { applyTicketPrinterProfile, buildTicketPrintCss, defaultTicketPrinterConfig, normalizeTicketPrinterConfig, ticketPrinterProfiles } from "./lib/printerProfiles";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8001/api";
 const API_BASE = API_URL.endsWith("/api") ? API_URL.slice(0, -4) : API_URL;
 function App() {
@@ -60,6 +61,7 @@ function App() {
   const [scaleStatus, setScaleStatus] = useState({ configured: false, enabled: false, provider: "mock", connection_type: "manual", ready: false, serial_supported: false, available_providers: ["mock"], detail: "Sin inicializar." });
   const [scaleReadResult, setScaleReadResult] = useState(null);
   const [serialPorts, setSerialPorts] = useState([]);
+  const [ticketPrinterConfig, setTicketPrinterConfig] = useState(defaultTicketPrinterConfig);
   const [guidedTourEnabled, setGuidedTourEnabled] = useState(true);
   const scanInputRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -84,6 +86,8 @@ function App() {
     if (window.localStorage.getItem(sidebarCollapsedStorageKey) === "true") setSidebarCollapsed(true);
     const savedTourEnabled = window.localStorage.getItem(guidedTourEnabledStorageKey);
     if (savedTourEnabled != null) setGuidedTourEnabled(savedTourEnabled === "true");
+    const savedTicketPrinter = readLocalJson(ticketPrinterStorageKey);
+    if (savedTicketPrinter) setTicketPrinterConfig(normalizeTicketPrinterConfig(savedTicketPrinter));
   }, []);
 
   useEffect(() => {
@@ -401,6 +405,32 @@ function App() {
   function handleScaleEnabledChange(event) {
     const { checked } = event.target;
     setScaleConfig((current) => ({ ...current, enabled: checked }));
+  }
+
+  function handleTicketPrinterField(event) {
+    const { name, value } = event.target;
+    if (name === "profileId") {
+      setTicketPrinterConfig(applyTicketPrinterProfile(value));
+      return;
+    }
+    setTicketPrinterConfig((current) => normalizeTicketPrinterConfig({
+      ...current,
+      profileId: "custom",
+      [name]: ["paperWidthMm", "horizontalPaddingMm", "verticalPaddingMm", "fontSizePx"].includes(name) ? Number(value) : value,
+    }));
+  }
+
+  function applyGadnicTicketPrinterPreset() {
+    setTicketPrinterConfig(applyTicketPrinterProfile("gadnic-it1050"));
+  }
+
+  function saveTicketPrinterConfig(event) {
+    event.preventDefault();
+    const normalized = normalizeTicketPrinterConfig(ticketPrinterConfig);
+    window.localStorage.setItem(ticketPrinterStorageKey, JSON.stringify(normalized));
+    setTicketPrinterConfig(normalized);
+    setMessage(`Impresora de ticket configurada: ${normalized.label}.`);
+    setError("");
   }
 
   async function saveScaleConfig(event) {
@@ -1159,31 +1189,7 @@ function App() {
 <meta charset="utf-8" />
 <title>Ticket ${saleNumber}</title>
 <style>
-  @page { size: 80mm auto; margin: 0; }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: #efe7dc; color: #1f2937; font-family: "Segoe UI", Arial, sans-serif; }
-  .sheet { width: 80mm; min-height: 100vh; margin: 0 auto; background: #fffdfa; padding: 10mm 7mm 8mm; }
-  .top { text-align: center; border-bottom: 1px dashed #c8b6a1; padding-bottom: 12px; }
-  .logo-wrap { display: flex; justify-content: center; margin-bottom: 10px; }
-  .logo { max-width: 26mm; max-height: 18mm; object-fit: contain; }
-  .eyebrow { font-size: 9px; letter-spacing: 0.26em; text-transform: uppercase; color: #8a6f57; }
-  h1 { margin: 6px 0 4px; font-size: 19px; line-height: 1.15; }
-  .meta { color: #6b7280; font-size: 10px; line-height: 1.45; }
-  .section { margin-top: 14px; }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 11px; }
-  .row.compact { padding: 2px 0 0; }
-  .label { color: #6b7280; }
-  .value { font-weight: 600; text-align: right; }
-  .lines { margin-top: 14px; border: 1px solid #e8dccd; border-radius: 14px; padding: 11px; background: linear-gradient(180deg, #fffdf9 0%, #f8f0e6 100%); }
-  .line-item + .line-item { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #d7c8b7; }
-  .line-head { display: flex; justify-content: space-between; gap: 12px; }
-  .product-name { font-size: 14px; font-weight: 700; line-height: 1.25; }
-  .product-meta { margin-top: 4px; color: #7b6857; font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; }
-  .totals { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; }
-  .total-strong { font-size: 16px; font-weight: 700; }
-  .foot { margin-top: 14px; padding-top: 10px; border-top: 1px dashed #c8b6a1; text-align: center; }
-  .foot strong { display: block; margin-bottom: 4px; font-size: 11px; }
-  .foot small { color: #6b7280; font-size: 10px; line-height: 1.45; }
+${buildTicketPrintCss(ticketPrinterConfig)}
 </style>
 </head>
 <body>
@@ -1457,7 +1463,7 @@ function App() {
           <StatusPanel message={message} error={error} />
 
           <section className="mt-6">
-            {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} handleSaleFieldChange={handleSaleFieldChange} handleScaleField={handleScaleField} handleScaleEnabledChange={handleScaleEnabledChange} saveScaleConfig={saveScaleConfig} testScaleRead={testScaleRead} refreshScalePorts={refreshScalePorts} serialPorts={serialPorts} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} bankRates={bankRates} selectedCreditBank={selectedCreditBank} suggestedBaseSalePrice={suggestedBaseSalePrice} suggestedFinalSalePrice={suggestedFinalSalePrice} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={displaySaleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} scaleConfig={scaleConfig} scaleStatus={scaleStatus} scaleReadResult={scaleReadResult} scaleProviderOptions={scaleProviderOptions} scaleConnectionOptions={scaleConnectionOptions} scaleUnitOptions={scaleUnitOptions} /> : null}
+            {activeSection === "home" ? <HomeSection cashSummary={cashSummary} lowStockItems={lowStockItems} branchName={branchName} setActiveSection={setActiveSection} totalCategories={categories.length} totalItems={items.length} businessProfileForm={businessProfileForm} setBusinessProfileForm={setBusinessProfileForm} handleBusinessProfileSave={handleBusinessProfileSave} handleLogoUpload={handleLogoUpload} clearLogo={clearLogo} saving={saving} handleText={handleText} handleSaleFieldChange={handleSaleFieldChange} handleScaleField={handleScaleField} handleScaleEnabledChange={handleScaleEnabledChange} saveScaleConfig={saveScaleConfig} testScaleRead={testScaleRead} refreshScalePorts={refreshScalePorts} serialPorts={serialPorts} formatMoney={formatMoney} formatDateTime={formatDateTime} recentSales={recentSales} saleForm={saleForm} setSaleForm={setSaleForm} addSaleLine={addSaleLine} submitSale={submitSale} paymentMethodOptions={paymentMethodOptions} bankRates={bankRates} selectedCreditBank={selectedCreditBank} suggestedBaseSalePrice={suggestedBaseSalePrice} suggestedFinalSalePrice={suggestedFinalSalePrice} salesSearchTerm={salesSearchTerm} setSalesSearchTerm={setSalesSearchTerm} saleMatches={saleMatches} chooseSaleItem={chooseSaleItem} selectedSaleItem={selectedSaleItem} saleCart={displaySaleCart} removeSaleLine={removeSaleLine} clearSaleCart={clearSaleCart} saleCartTotal={saleCartTotal} saleCartUnits={saleCartUnits} submitCashOpen={submitCashOpen} cashOpenForm={cashOpenForm} setCashOpenForm={setCashOpenForm} submitCashClose={submitCashClose} cashCloseForm={cashCloseForm} setCashCloseForm={setCashCloseForm} scaleConfig={scaleConfig} scaleStatus={scaleStatus} scaleReadResult={scaleReadResult} scaleProviderOptions={scaleProviderOptions} scaleConnectionOptions={scaleConnectionOptions} scaleUnitOptions={scaleUnitOptions} ticketPrinterConfig={ticketPrinterConfig} ticketPrinterProfiles={ticketPrinterProfiles} handleTicketPrinterField={handleTicketPrinterField} applyGadnicTicketPrinterPreset={applyGadnicTicketPrinterPreset} saveTicketPrinterConfig={saveTicketPrinterConfig} /> : null}
             {activeSection === "inventory" ? <InventorySection loading={loading} searchTerm={searchTerm} setSearchTerm={setSearchTerm} inventoryCategoryFilter={inventoryCategoryFilter} setInventoryCategoryFilter={setInventoryCategoryFilter} inventoryProviderFilter={inventoryProviderFilter} setInventoryProviderFilter={setInventoryProviderFilter} providerOptions={providerOptions} refreshAll={refreshAll} scanState={scanState} scanInputRef={scanInputRef} scanCode={scanCode} setScanCode={setScanCode} processScan={processScan} scanAmount={scanAmount} setScanAmount={setScanAmount} saving={saving} submitScan={submitScan} scanCandidate={scanCandidate} productForm={productForm} handleText={handleText} handleProductFieldChange={handleProductFieldChange} setProductForm={setProductForm} categories={categories} resetProductEditor={resetProductEditor} editingId={editingId} submitProduct={submitProduct} newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName} submitCategory={submitCategory} filteredItems={filteredItems} startEditing={startEditing} handleDelete={handleDelete} movements={movements} inventoryValue={inventoryValue} lowStockItems={lowStockItems} setActiveSection={setActiveSection} formatMoney={formatMoney} selectedInventoryIds={selectedInventoryIds} bulkProviderName={bulkProviderName} setBulkProviderName={setBulkProviderName} assignProviderToSelection={assignProviderToSelection} toggleInventorySelection={toggleInventorySelection} toggleAllVisibleInventorySelection={toggleAllVisibleInventorySelection} /> : null}
             {activeSection === "treasury" ? (treasuryUnlocked ? <TreasurySection cashSummary={cashSummary} treasuryFilter={treasuryFilter} setTreasuryFilter={setTreasuryFilter} treasuryPreset={treasuryPreset} treasuryMetric={treasuryMetric} setTreasuryMetric={setTreasuryMetric} applyTreasuryPreset={applyTreasuryPreset} applyTreasuryFilter={applyTreasuryFilter} clearTreasuryFilter={clearTreasuryFilter} exportTreasuryCsv={exportTreasuryCsv} printTreasurySummary={printTreasurySummary} saving={saving} treasuryFilterActive={treasuryFilterActive} reports={reports} dailySales={dailySales} cashMovementForm={cashMovementForm} setCashMovementForm={setCashMovementForm} bankRateForm={bankRateForm} setBankRateForm={setBankRateForm} editingBankRateId={editingBankRateId} bankRates={bankRates} submitBankRate={submitBankRate} startEditingBankRate={startEditingBankRate} deleteBankRate={deleteBankRate} resetBankRateEditor={resetBankRateEditor} submitCashMovement={submitCashMovement} handleText={handleText} formatMoney={formatMoney} formatInteger={formatInteger} formatDate={formatDate} formatDateTime={formatDateTime} /> : <Panel title="Tesorería privada" description="Esta vista concentra recaudación, márgenes y análisis sensibles del comercio."><form className="max-w-md space-y-4" onSubmit={unlockTreasury}><InputField label="Clave local" name="treasuryAccessPassword" type="password" value={treasuryAccessPassword} onChange={(event) => setTreasuryAccessPassword(event.target.value)} placeholder="Ingresá la clave del negocio" /><button type="submit" className="primary-button w-full rounded-2xl px-4 py-3 text-sm font-semibold">Desbloquear tesorería</button></form></Panel>) : null}
           </section>

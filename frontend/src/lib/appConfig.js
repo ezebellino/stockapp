@@ -55,4 +55,5 @@ export const activeSectionStorageKey = `appstock-active-section-${storageVersion
 export const sidebarCollapsedStorageKey = `appstock-sidebar-collapsed-${storageVersion}`;
 export const guidedTourEnabledStorageKey = `appstock-guided-tour-enabled-${storageVersion}`;
 export const guidedTourSeenStorageKey = `appstock-guided-tour-seen-${storageVersion}`;
+export const ticketPrinterStorageKey = `appstock-ticket-printer-${storageVersion}`;
 export const paymentMethodOptions = ["Efectivo", "Debito", "Credito", "Transferencia", "Mercado Pago", "Otro"];
